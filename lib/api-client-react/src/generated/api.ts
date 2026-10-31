@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AdditionalCardsResult,
   CardReviewInput,
   ExtractionResult,
   GeneratedCard,
@@ -32,7 +33,9 @@ import type {
   PdfTextExtraction,
   PdfTextInput,
   SearchLibraryParams,
-  StudySummary
+  StudySummary,
+  VerifiedGuide,
+  VerifiedGuideSummary
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -535,6 +538,80 @@ export function useListNoteCards<TData = Awaited<ReturnType<typeof listNoteCards
 
 
 
+export const getGenerateMoreCardsUrl = (noteId: string,) => {
+
+
+
+
+  return `/api/notes/${noteId}/cards/more`
+}
+
+/**
+ * @summary Generate new, uncovered cards for a note
+ */
+export const generateMoreCards = async (noteId: string, options?: Parameters<typeof customFetch>[1]): Promise<AdditionalCardsResult> => {
+
+  return customFetch<AdditionalCardsResult>(getGenerateMoreCardsUrl(noteId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getGenerateMoreCardsMutationKey = () => ['generateMoreCards'] as const;
+
+export const getGenerateMoreCardsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateMoreCards>>, TError,GenerateMoreCardsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateMoreCards>>, TError,GenerateMoreCardsMutationVariables, TContext> => {
+
+const mutationKey = getGenerateMoreCardsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateMoreCards>>, GenerateMoreCardsMutationVariables> = (props) => {
+          const {noteId} = props ?? {};
+
+          return  generateMoreCards(noteId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateMoreCardsMutationResult = NonNullable<Awaited<ReturnType<typeof generateMoreCards>>>
+
+    export type GenerateMoreCardsMutationError = ErrorType<void>
+    export type GenerateMoreCardsMutationVariables = {noteId: string}
+
+    /**
+ * @summary Generate new, uncovered cards for a note
+ */
+export const useGenerateMoreCards = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateMoreCards>>, TError,GenerateMoreCardsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateMoreCards>>,
+        TError,
+        GenerateMoreCardsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getGenerateMoreCardsMutationOptions(options));
+    }
+
 export const getExtractStudyPackUrl = (noteId: string,) => {
 
 
@@ -770,6 +847,160 @@ export function useSearchLibrary<TData = Awaited<ReturnType<typeof searchLibrary
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchLibraryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListVerifiedGuidesUrl = () => {
+
+
+
+
+  return `/api/library/guides`
+}
+
+/**
+ * @summary List note sessions with approved study cards
+ */
+export const listVerifiedGuides = async ( options?: Parameters<typeof customFetch>[1]): Promise<VerifiedGuideSummary[]> => {
+
+  return customFetch<VerifiedGuideSummary[]>(getListVerifiedGuidesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVerifiedGuidesQueryKey = () => {
+    return [
+    `/api/library/guides`
+    ] as const;
+    }
+
+
+export const getListVerifiedGuidesQueryOptions = <TData = Awaited<ReturnType<typeof listVerifiedGuides>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVerifiedGuides>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVerifiedGuidesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVerifiedGuides>>> = ({ signal }) => listVerifiedGuides({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVerifiedGuides>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVerifiedGuidesQueryResult = NonNullable<Awaited<ReturnType<typeof listVerifiedGuides>>>
+export type ListVerifiedGuidesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List note sessions with approved study cards
+ */
+
+export function useListVerifiedGuides<TData = Awaited<ReturnType<typeof listVerifiedGuides>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVerifiedGuides>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVerifiedGuidesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getFetchVerifiedGuideUrl = (noteId: string,) => {
+
+
+
+
+  return `/api/library/guides/${noteId}`
+}
+
+/**
+ * @summary Get approved study cards for one note session
+ */
+export const fetchVerifiedGuide = async (noteId: string, options?: Parameters<typeof customFetch>[1]): Promise<VerifiedGuide> => {
+
+  return customFetch<VerifiedGuide>(getFetchVerifiedGuideUrl(noteId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getFetchVerifiedGuideQueryKey = (noteId: string,) => {
+    return [
+    `/api/library/guides/${noteId}`
+    ] as const;
+    }
+
+
+export const getFetchVerifiedGuideQueryOptions = <TData = Awaited<ReturnType<typeof fetchVerifiedGuide>>, TError = ErrorType<void>>(noteId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof fetchVerifiedGuide>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getFetchVerifiedGuideQueryKey(noteId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof fetchVerifiedGuide>>> = ({ signal }) => fetchVerifiedGuide(noteId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: noteId !== null && noteId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof fetchVerifiedGuide>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type FetchVerifiedGuideQueryResult = NonNullable<Awaited<ReturnType<typeof fetchVerifiedGuide>>>
+export type FetchVerifiedGuideQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get approved study cards for one note session
+ */
+
+export function useFetchVerifiedGuide<TData = Awaited<ReturnType<typeof fetchVerifiedGuide>>, TError = ErrorType<void>>(
+ noteId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof fetchVerifiedGuide>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getFetchVerifiedGuideQueryOptions(noteId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

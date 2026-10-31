@@ -2,6 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        if (localStorage.getItem('living-study-theme') === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+      } catch {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Living Study — Make knowledge stay.</title>
     <meta name="description" content="Living Study turns your lecture notes into source-linked cards you can review, refine, and keep." />

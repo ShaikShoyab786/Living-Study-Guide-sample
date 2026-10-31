@@ -117,6 +117,29 @@ export const ListNoteCardsResponse = zod.array(ListNoteCardsResponseItem)
 
 
 /**
+ * @summary Generate new, uncovered cards for a note
+ */
+export const GenerateMoreCardsParams = zod.object({
+  "noteId": zod.coerce.string()
+})
+
+export const GenerateMoreCardsResponse = zod.object({
+  "cards": zod.array(zod.object({
+  "id": zod.string(),
+  "noteId": zod.string(),
+  "sourceExcerpt": zod.string(),
+  "concept": zod.string(),
+  "question": zod.string(),
+  "answer": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "createdAt": zod.coerce.date()
+})),
+  "hasMore": zod.boolean(),
+  "mode": zod.enum(['ai', 'demo'])
+})
+
+
+/**
  * @summary Extract source-linked study cards from a note
  */
 export const ExtractStudyPackParams = zod.object({
@@ -181,6 +204,40 @@ export const SearchLibraryResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const SearchLibraryResponse = zod.array(SearchLibraryResponseItem)
+
+
+/**
+ * @summary List note sessions with approved study cards
+ */
+export const ListVerifiedGuidesResponseItem = zod.object({
+  "noteId": zod.string(),
+  "title": zod.string(),
+  "approvedCount": zod.number().int()
+})
+export const ListVerifiedGuidesResponse = zod.array(ListVerifiedGuidesResponseItem)
+
+
+/**
+ * @summary Get approved study cards for one note session
+ */
+export const FetchVerifiedGuideParams = zod.object({
+  "noteId": zod.coerce.string()
+})
+
+export const FetchVerifiedGuideResponse = zod.object({
+  "noteId": zod.string(),
+  "title": zod.string(),
+  "cards": zod.array(zod.object({
+  "id": zod.string(),
+  "cardId": zod.string(),
+  "sourceExcerpt": zod.string(),
+  "concept": zod.string(),
+  "question": zod.string(),
+  "answer": zod.string(),
+  "editedByUser": zod.boolean(),
+  "createdAt": zod.coerce.date()
+}))
+})
 
 
 /**

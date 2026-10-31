@@ -7,15 +7,20 @@ import {
   useCreateNote,
   useExtractPdfText,
   useExtractStudyPack,
+  useFetchVerifiedGuide,
+  useGenerateMoreCards,
   useGetStudySummary,
   useHealthCheck,
+  useListVerifiedGuides,
   useListNoteCards,
   useListNotes,
   useReviewCard,
   useSearchLibrary,
+  getFetchVerifiedGuideQueryKey,
   getGetStudySummaryQueryKey,
   getListNoteCardsQueryKey,
   getListNotesQueryKey,
+  getListVerifiedGuidesQueryKey,
   getSearchLibraryQueryKey,
 } from '@workspace/api-client-react';
 import {
@@ -31,6 +36,8 @@ import {
   NotebookPen,
   Search,
   Sparkles,
+  Sun,
+  Moon,
   Upload,
   X,
 } from 'lucide-react';
@@ -90,6 +97,23 @@ function Shell({ children }: { children: ReactNode }) {
   const notesQuery = useListNotes();
   const notes = (notesQuery.data ?? []) as NoteRecord[];
   const selectedNote = location.startsWith('/review/') ? decodeURIComponent(location.slice('/review/'.length)) : '';
+  const isGuideSelected = location.startsWith('/library/') ? decodeURIComponent(location.slice('/library/'.length)) : '';
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  const pageLabel = location === '/'
+    ? 'Workspace'
+    : location.startsWith('/review')
+      ? 'Review Hub'
+      : location.startsWith('/library/')
+        ? 'Verified guide'
+        : location === '/library'
+          ? 'Verified Library'
+          : location.slice(1);
+  const toggleTheme = () => setTheme((current) => {
+    const next = current === 'light' ? 'dark' : 'light';
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    localStorage.setItem('living-study-theme', next);
+    return next;
+  });
   const pending = summary.data?.pending ?? 0;
   return (
     <div className="app-shell">
@@ -107,11 +131,11 @@ function Shell({ children }: { children: ReactNode }) {
             <NotebookPen size={17} /> Workspace
           </Link>
           <Link href="/review" className={`nav-link ${location === '/review' || location.startsWith('/review/') ? 'active' : ''}`} data-testid="link-review">
-            <CheckCheck size={17} /> Review
+            <CheckCheck size={17} /> Review Hub
             {pending > 0 && <span className="nav-count">{pending}</span>}
           </Link>
           <Link href="/library" className={`nav-link ${location === '/library' ? 'active' : ''}`} data-testid="link-library">
-            <Library size={17} /> Verified guides
+            <Library size={17} /> Verified Library
           </Link>
         </nav>
         <div className="session-heading">Note sessions</div>
@@ -121,8 +145,8 @@ function Shell({ children }: { children: ReactNode }) {
             notes.length === 0 ? <span className="session-placeholder">Your saved notes appear here.</span> :
             notes.map((note) => (
               <Link
-                href={`/review/${encodeURIComponent(note.id)}`}
-                className={`session-link ${selectedNote === note.id ? 'selected' : ''}`}
+                href={`/library/${encodeURIComponent(note.id)}`}
+                className={`session-link ${isGuideSelected === note.id ? 'selected' : ''}`}
                 key={note.id}
                 title={note.title}
                 data-testid={`link-session-${note.id}`}
@@ -142,9 +166,17 @@ function Shell({ children }: { children: ReactNode }) {
       </aside>
       <main className="main-area">
         <header className="topbar">
-          <div className="crumb">Study desk <span style={{ color: '#c2aa96', padding: '0 7px' }}>/</span> {location === '/' ? 'Workspace' : location.slice(1)}</div>
+          <div className="crumb">Study desk <span style={{ color: 'var(--secondary-text)', padding: '0 7px' }}>/</span> {pageLabel}</div>
+          <nav className="topbar-nav" aria-label="Quick navigation">
+            <Link href="/" className={`quick-tab ${location === '/' ? 'active' : ''}`} aria-current={location === '/' ? 'page' : undefined} data-testid="quick-workspace">Workspace</Link>
+            <Link href="/review" className={`quick-tab ${location.startsWith('/review') ? 'active' : ''}`} aria-current={location.startsWith('/review') ? 'page' : undefined} data-testid="quick-review">Review Hub</Link>
+            <Link href="/library" className={`quick-tab ${location.startsWith('/library') ? 'active' : ''}`} aria-current={location.startsWith('/library') ? 'page' : undefined} data-testid="quick-library">Verified Library</Link>
+          </nav>
           <div className="topbar-right">
           <span data-testid="status-api-health"><i className={`health-dot ${health.isError ? 'offline' : ''}`} />{health.isLoading ? 'Checking service' : health.isError ? 'Service unavailable' : 'Service online'}</span>
+            <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`} data-testid="button-theme-toggle">
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
             <span className="user-chip" aria-label="Personal workspace">LS</span>
           </div>
         </header>
@@ -252,8 +284,9 @@ function HomePage() {
         queryClient.invalidateQueries({ queryKey: getListNotesQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
         queryClient.invalidateQueries({ queryKey: getListNoteCardsQueryKey(note.id) }),
+        queryClient.invalidateQueries({ queryKey: getListVerifiedGuidesQueryKey() }),
       ]);
-      setLocation(`/review?noteId=${encodeURIComponent(note.id)}`);
+      setLocation(`/review/${encodeURIComponent(note.id)}`);
     } catch {
       setError('We couldn’t make the study pack just now. Your note may already be saved—please try again.');
       queryClient.invalidateQueries({ queryKey: getListNotesQueryKey() });
@@ -304,7 +337,7 @@ function HomePage() {
         <section className="panel recent-panel">
           <div className="recent-header"><h3>Recent notes</h3><Link className="text-link" href="/review">Review cards</Link></div>
           {notesQuery.isLoading ? <LoadingBlock lines={2} /> : notesQuery.isError ? <ErrorNotice retry={() => notesQuery.refetch()} /> : notes.length === 0 ? (
-            <div style={{ color: '#969f96', fontSize: 11, lineHeight: 1.6 }}>Your first set of notes will find a home here.</div>
+            <div style={{ color: 'var(--secondary-text)', fontSize: 11, lineHeight: 1.6 }}>Your first set of notes will find a home here.</div>
           ) : notes.slice(0, 3).map((note) => (
             <div className="recent-note" key={note.id} data-testid={`note-recent-${note.id}`}>
               <FileText className="recent-note-icon" size={15} />
@@ -338,9 +371,13 @@ function ReviewPage() {
   const chosenId = requestedId || notes[0]?.id || '';
   const cardsQuery = useListNoteCards(chosenId, { query: { queryKey: getListNoteCardsQueryKey(chosenId), enabled: !!chosenId } });
   const reviewCard = useReviewCard();
+  const generateMore = useGenerateMoreCards();
   const cards = (cardsQuery.data ?? []) as CardRecord[];
   const pendingCards = useMemo(() => cards.filter((card) => card.status === 'pending'), [cards]);
   const current = pendingCards[0];
+  const [canGenerateMore, setCanGenerateMore] = useState(false);
+  const [generationError, setGenerationError] = useState('');
+  const [generationExhausted, setGenerationExhausted] = useState(false);
 
   useEffect(() => {
     if (current) {
@@ -359,11 +396,50 @@ function ReviewPage() {
     setGenerationMode(sessionStorage.getItem(`study-pack-mode:${chosenId}`) || 'unknown');
   }, [chosenId]);
 
+  useEffect(() => {
+    setGenerationError('');
+    const exhausted = chosenId
+      ? sessionStorage.getItem(`study-pack-more-exhausted:${chosenId}`) === 'true'
+      : false;
+    const hasCards = cardsQuery.isSuccess && cards.some((card) => card.noteId === chosenId);
+    setGenerationExhausted(exhausted);
+    setCanGenerateMore(hasCards && !exhausted);
+  }, [cardsQuery.isSuccess, chosenId, cards.length]);
+
   const refresh = async (card: CardRecord) => Promise.all([
     queryClient.invalidateQueries({ queryKey: getListNoteCardsQueryKey(card.noteId) }),
     queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
     queryClient.invalidateQueries({ queryKey: getSearchLibraryQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: getListVerifiedGuidesQueryKey() }),
+    queryClient.invalidateQueries({ queryKey: getFetchVerifiedGuideQueryKey(card.noteId) }),
   ]);
+
+  const requestMore = async () => {
+    if (!chosenId) return;
+    setGenerationError('');
+    setGenerationExhausted(false);
+    try {
+      const result = await generateMore.mutateAsync({ noteId: chosenId });
+      setCanGenerateMore(result.hasMore);
+      setGenerationExhausted(!result.hasMore);
+      sessionStorage.setItem(`study-pack-mode:${chosenId}`, result.mode);
+      if (result.hasMore) {
+        sessionStorage.removeItem(`study-pack-more-exhausted:${chosenId}`);
+      } else {
+        sessionStorage.setItem(`study-pack-more-exhausted:${chosenId}`, 'true');
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListNoteCardsQueryKey(chosenId) }),
+        queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getSearchLibraryQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListVerifiedGuidesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getFetchVerifiedGuideQueryKey(chosenId) }),
+      ]);
+    } catch {
+      setGenerationError('Couldn’t find more cards just now.');
+      setCanGenerateMore(true);
+    }
+  };
 
   const submitReview = async (action: 'approve' | 'edit_approve' | 'discard') => {
     if (!current) return;
@@ -397,6 +473,13 @@ function ReviewPage() {
           </select>
           <ChevronDown size={13} style={{ display: 'none' }} />
         </label>}
+      </div>
+      <div className="generation-controls" aria-live="polite">
+        {canGenerateMore && <button className="btn btn-outline btn-small" type="button" onClick={requestMore} disabled={generateMore.isPending} data-testid="button-generate-more">
+          {generateMore.isPending ? 'Finding more…' : 'Need more questions? Ask Miky'} <Sparkles size={13} />
+        </button>}
+        {generationError && <span className="inline-error" role="alert" data-testid="text-generation-error">{generationError}</span>}
+        {generationExhausted && <span className="generation-exhausted" data-testid="text-generation-exhausted">You’re all caught up — there aren’t any new distinct questions left in these notes.</span>}
       </div>
       {notesQuery.isLoading ? <div className="panel" style={{ padding: 25 }}><LoadingBlock lines={4} /></div> :
         notesQuery.isError ? <ErrorNotice retry={() => notesQuery.refetch()} /> :
@@ -443,7 +526,7 @@ function ReviewPage() {
               </section>
             </div>
             <div className="review-actions">
-              {actionError ? <span className="notice" role="alert">{actionError}</span> : <span style={{ color: '#9aa39a', fontSize: 10 }}>You can always come back to what you keep.</span>}
+              {actionError ? <span className="notice" role="alert">{actionError}</span> : <span style={{ color: 'var(--secondary-text)', fontSize: 10 }}>You can always come back to what you keep.</span>}
               <div className="action-group">
                 {editing ? <>
                   <button className="btn btn-outline btn-small" onClick={() => { setEditing(false); setConcept(current.concept); setQuestion(current.question); setAnswer(current.answer); }} data-testid="button-cancel-edit">Cancel</button>
@@ -469,45 +552,101 @@ function LibraryPage() {
   const [query, setQuery] = useState('');
   const normalized = query.trim();
   const libraryQuery = useSearchLibrary(normalized ? { query: normalized } : undefined);
+  const guidesQuery = useListVerifiedGuides();
   const cards = (libraryQuery.data ?? []) as LibraryRecord[];
 
   return <div className="content">
     <div className="eyebrow">Your verified, saved study guides</div>
     <h1 className="page-title">A library that<br />sounds like you.</h1>
-    <p className="page-intro">Your verified cards, gathered in one place. Search by concept, question, or the details you want to bring back.</p>
+    <p className="page-intro">Each note session keeps its approved cards and the exact lines they came from.</p>
     <div className="library-toolbar">
       <div className="search-wrap">
         <Search size={16} />
         <input className="search-input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your knowledge…" aria-label="Search library" data-testid="input-library-search" />
       </div>
-      <span className="library-count" data-testid="text-library-count">{libraryQuery.isLoading ? 'Gathering cards…' : `${cards.length} ${cards.length === 1 ? 'card' : 'cards'} kept`}</span>
+      <span className="library-count" data-testid="text-library-count">{guidesQuery.isLoading ? 'Gathering guides…' : `${guidesQuery.data?.length ?? 0} ${guidesQuery.data?.length === 1 ? 'guide' : 'guides'}`}</span>
     </div>
-    {libraryQuery.isError ? <ErrorNotice retry={() => libraryQuery.refetch()} /> :
-      libraryQuery.isLoading ? <div className="library-grid">
-        {[0, 1, 2, 3].map((item) => <div className="panel" key={item} style={{ padding: 21 }}><LoadingBlock lines={4} /></div>)}
+    {guidesQuery.isError ? <ErrorNotice retry={() => guidesQuery.refetch()} /> :
+      libraryQuery.isError ? <ErrorNotice retry={() => libraryQuery.refetch()} /> :
+      guidesQuery.isLoading || libraryQuery.isLoading ? <div className="guide-list">
+        {[0, 1, 2].map((item) => <div className="panel guide-row" key={item}><LoadingBlock lines={3} /></div>)}
       </div> :
-      cards.length ? <div className="library-grid">
-        {cards.map((card, index) => <article key={card.id} className="library-card" style={{ animationDelay: `${Math.min(index * 45, 240)}ms` }} data-testid={`library-card-${card.id}`}>
-          <div className="library-card-top">
-            <span className="library-concept">{card.concept}</span>
-            <span className="verified-pill"><Check size={12} /> Verified</span>
-          </div>
-          <h2 className="library-question">{card.question}</h2>
-          <p className="library-answer">{card.answer}</p>
-          <div className="library-card-foot">
-            <span>{formatDate(card.createdAt)}</span>
-            {card.editedByUser && <span className="edited-tag">In your words</span>}
-          </div>
-        </article>)}
+      guidesQuery.data?.length ? <div className="guide-list">
+        {guidesQuery.data.map((guide, index) => {
+          return <Link href={`/library/${encodeURIComponent(guide.noteId)}`} className="guide-row" key={guide.noteId} style={{ animationDelay: `${Math.min(index * 45, 240)}ms` }} data-testid={`link-guide-${guide.noteId}`}>
+            <div className="guide-index">{String(index + 1).padStart(2, '0')}</div>
+            <div className="guide-main">
+              <span className="guide-kicker">Verified guide</span>
+              <h2>{guide.title}</h2>
+              <span className="guide-detail">{guide.approvedCount} {guide.approvedCount === 1 ? 'card' : 'cards'} kept</span>
+            </div>
+            <span className="guide-arrow" aria-hidden="true">↗</span>
+          </Link>;
+        })}
       </div> : (
         <div className="review-empty empty-library">
-          {!normalized && <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />}
+          <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />
           <div className="empty-mark"><Library size={21} /></div>
-          <h2>{normalized ? 'No cards found.' : 'Your library is taking shape.'}</h2>
-          <p>{normalized ? 'Try a different word or a broader idea.' : 'Once you approve a study card, it will be kept here for easy finding later.'}</p>
+          <h2>{normalized ? 'No guides found.' : 'Your library is taking shape.'}</h2>
+          <p>{normalized ? 'Try a different word or a broader idea.' : 'Approved cards will gather here, grouped by the note session they came from.'}</p>
           {!normalized && <Link href="/review" className="btn btn-quiet" data-testid="link-library-review">Go to review <BookOpenCheck size={14} /></Link>}
         </div>
       )}
+    {normalized && !libraryQuery.isLoading && !libraryQuery.isError && cards.length > 0 && <section className="library-search-results" aria-label="Matching saved cards">
+      <div className="results-heading"><span className="guide-kicker">Across your library</span><span className="library-count">{cards.length} matching {cards.length === 1 ? 'card' : 'cards'}</span></div>
+      <div className="library-grid">
+        {cards.map((card) => <article key={card.id} className="library-card" data-testid={`library-search-card-${card.id}`}>
+          <div className="library-card-top"><span className="library-concept">{card.concept}</span><span className="verified-pill"><Check size={12} /> Verified</span></div>
+          <h2 className="library-question">{card.question}</h2>
+          <p className="library-answer">{card.answer}</p>
+          <div className="library-card-foot"><span>{formatDate(card.createdAt)}</span>{card.editedByUser && <span className="edited-tag">In your words</span>}</div>
+        </article>)}
+      </div>
+    </section>}
+    {normalized && !libraryQuery.isLoading && !libraryQuery.isError && cards.length === 0 && <div className="search-no-results" role="status" data-testid="text-library-no-results">No saved cards match that search.</div>}
+  </div>;
+}
+
+function GuideDetailPage() {
+  const params = useParams<{ noteId: string }>();
+  const noteId = params.noteId || '';
+  const [query, setQuery] = useState('');
+  const guideQuery = useFetchVerifiedGuide(noteId, { query: { queryKey: getFetchVerifiedGuideQueryKey(noteId), enabled: !!noteId } });
+  const guide = guideQuery.data;
+  const normalized = query.trim().toLowerCase();
+  const cards = (guide?.cards ?? []).filter((card) => !normalized || [card.concept, card.question, card.answer, card.sourceExcerpt].some((part) => part.toLowerCase().includes(normalized)));
+
+  return <div className="content">
+    <Link href="/library" className="back-link" data-testid="link-guide-back"><ArrowDownToLine size={14} /> All verified guides</Link>
+    {guideQuery.isLoading ? <div className="guide-detail-loading"><LoadingBlock lines={5} /></div> :
+      guideQuery.isError ? <ErrorNotice retry={() => guideQuery.refetch()} /> :
+      !guide ? <div className="review-empty"><h2>This guide isn’t available.</h2><p>It may not have any approved cards yet.</p><Link href="/library" className="btn btn-quiet">Back to library</Link></div> :
+      <>
+        <div className="eyebrow">Note session · {cards.length} of {guide.cards.length} cards</div>
+        <h1 className="page-title guide-title">{guide.title}</h1>
+        <p className="page-intro">Approved ideas, kept beside the exact excerpt that grounds each one.</p>
+        <div className="library-toolbar">
+          <div className="search-wrap">
+            <Search size={16} />
+            <input className="search-input" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this guide…" aria-label="Search this note guide" data-testid="input-guide-search" />
+          </div>
+          <span className="library-count" data-testid="text-guide-card-count">{cards.length} {cards.length === 1 ? 'card' : 'cards'}</span>
+        </div>
+        {cards.length ? <div className="guide-card-list">
+          {cards.map((card, index) => <article className="guide-card" key={card.id} data-testid={`guide-card-${card.id}`} style={{ animationDelay: `${Math.min(index * 45, 240)}ms` }}>
+            <div className="guide-card-content">
+              <div className="library-card-top"><span className="library-concept">{card.concept}</span><span className="verified-pill"><Check size={12} /> Verified</span></div>
+              <h2 className="library-question">{card.question}</h2>
+              <p className="library-answer">{card.answer}</p>
+            </div>
+            <div className="guide-source">
+              <span className="column-label"><FileText size={13} /> Exact source excerpt</span>
+              <blockquote className="source-quote">“{card.sourceExcerpt}”</blockquote>
+              <div className="library-card-foot"><span>{formatDate(card.createdAt)}</span>{card.editedByUser && <span className="edited-tag">In your words</span>}</div>
+            </div>
+          </article>)}
+        </div> : <div className="review-empty"><div className="empty-mark"><Search size={20} /></div><h2>{normalized ? 'No cards match that search.' : 'No approved cards yet.'}</h2><p>{normalized ? 'Try a different phrase from this guide.' : 'Cards appear here after they are approved in review.'}</p></div>}
+      </>}
   </div>;
 }
 
@@ -529,6 +668,7 @@ function Router() {
         <Route path="/review/:noteId" component={ReviewPage} />
         <Route path="/review" component={ReviewPage} />
         <Route path="/library" component={LibraryPage} />
+        <Route path="/library/:noteId" component={GuideDetailPage} />
         <Route component={NotFound} />
       </Switch>
     </Shell>

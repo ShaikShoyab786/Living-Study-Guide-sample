@@ -103,6 +103,43 @@ export interface ExtractionResult {
   mode: ExtractionResultMode;
 }
 
+export type AdditionalCardsResultMode = typeof AdditionalCardsResultMode[keyof typeof AdditionalCardsResultMode];
+
+
+export const AdditionalCardsResultMode = {
+  ai: 'ai',
+  demo: 'demo',
+} as const;
+
+export interface AdditionalCardsResult {
+  cards: GeneratedCard[];
+  hasMore: boolean;
+  mode: AdditionalCardsResultMode;
+}
+
+export interface VerifiedGuideSummary {
+  noteId: string;
+  title: string;
+  approvedCount: number;
+}
+
+export interface VerifiedGuideCard {
+  id: string;
+  cardId: string;
+  sourceExcerpt: string;
+  concept: string;
+  question: string;
+  answer: string;
+  editedByUser: boolean;
+  createdAt: string;
+}
+
+export interface VerifiedGuide {
+  noteId: string;
+  title: string;
+  cards: VerifiedGuideCard[];
+}
+
 export type PdfStudyPackMode = typeof PdfStudyPackMode[keyof typeof PdfStudyPackMode];
 
 

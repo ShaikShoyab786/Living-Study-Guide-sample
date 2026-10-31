@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './additionalCardsResult';
+export * from './additionalCardsResultMode';
 export * from './cardReviewInput';
 export * from './cardReviewInputAction';
 export * from './extractionResult';
@@ -23,3 +25,6 @@ export * from './pdfTextExtraction';
 export * from './pdfTextInput';
 export * from './searchLibraryParams';
 export * from './studySummary';
+export * from './verifiedGuide';
+export * from './verifiedGuideCard';
+export * from './verifiedGuideSummary';

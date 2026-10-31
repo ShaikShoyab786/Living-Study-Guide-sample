@@ -1,4 +1,4 @@
-import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { Router, type IRouter, type RequestHandler } from "express";
 import multer from "multer";
 import {
@@ -8,7 +8,12 @@ import {
   ExtractPdfTextResponse,
   ExtractStudyPackParams,
   ExtractStudyPackResponse,
+  FetchVerifiedGuideParams,
+  FetchVerifiedGuideResponse,
+  GenerateMoreCardsParams,
+  GenerateMoreCardsResponse,
   GetStudySummaryResponse,
+  ListVerifiedGuidesResponse,
   ListNoteCardsParams,
   ListNoteCardsResponse,
   ListNotesResponse,
@@ -24,7 +29,7 @@ import {
   libraryCardsTable,
   notesTable,
 } from "@workspace/db";
-import { extractCards } from "../lib/study-extraction";
+import { extractAdditionalCards, extractCards } from "../lib/study-extraction";
 import { extractPdfText, PdfExtractionError } from "../lib/pdf-extraction";
 
 const router: IRouter = Router();
@@ -235,6 +240,65 @@ router.post("/notes/:noteId/extract", async (req, res): Promise<void> => {
   res.json(ExtractStudyPackResponse.parse({ cards, mode: result.mode }));
 });
 
+router.post("/notes/:noteId/cards/more", async (req, res): Promise<void> => {
+  const params = GenerateMoreCardsParams.safeParse(req.params);
+  if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
+    res.status(400).json({ error: "Invalid note ID" });
+    return;
+  }
+  const [note] = await db
+    .select()
+    .from(notesTable)
+    .where(eq(notesTable.id, params.data.noteId))
+    .limit(1);
+  if (!note) {
+    res.status(404).json({ error: "Note not found" });
+    return;
+  }
+
+  const alreadyCovered = await db
+    .select({
+      sourceExcerpt: generatedCardsTable.sourceExcerpt,
+      concept: generatedCardsTable.concept,
+      question: generatedCardsTable.question,
+    })
+    .from(generatedCardsTable)
+    .where(eq(generatedCardsTable.noteId, note.id));
+
+  try {
+    const result = await extractAdditionalCards(note.rawText, alreadyCovered);
+    const cards =
+      result.cards.length > 0
+        ? await db
+            .insert(generatedCardsTable)
+            .values(
+              result.cards.map((card) => ({
+                noteId: note.id,
+                sourceExcerpt: card.sourceExcerpt,
+                concept: card.concept,
+                question: card.question,
+                answer: card.answer,
+                status: "pending" as const,
+              })),
+            )
+            .returning()
+        : [];
+
+    res.json(
+      GenerateMoreCardsResponse.parse({
+        cards,
+        hasMore: result.hasMore,
+        mode: result.mode,
+      }),
+    );
+  } catch (error) {
+    req.log.error({ err: error, noteId: note.id }, "Failed to generate additional study cards");
+    res.status(503).json({
+      error: "Miky couldn’t find more questions just now. Try again shortly.",
+    });
+  }
+});
+
 router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
   const params = ReviewCardParams.safeParse(req.params);
   const parsed = ReviewCardBody.safeParse(req.body);
@@ -307,6 +371,66 @@ router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
   });
 
   res.json(ReviewCardResponse.parse(updated));
+});
+
+router.get("/library/guides", async (_req, res): Promise<void> => {
+  const guides = await db
+    .select({
+      noteId: generatedCardsTable.noteId,
+      title: notesTable.title,
+      approvedCount: sql<number>`count(${libraryCardsTable.id})::int`,
+    })
+    .from(libraryCardsTable)
+    .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+    .where(eq(generatedCardsTable.status, "approved"))
+    .groupBy(generatedCardsTable.noteId, notesTable.title)
+    .orderBy(desc(sql`max(${libraryCardsTable.createdAt})`));
+  res.json(ListVerifiedGuidesResponse.parse(guides));
+});
+
+router.get("/library/guides/:noteId", async (req, res): Promise<void> => {
+  const params = FetchVerifiedGuideParams.safeParse(req.params);
+  if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
+    res.status(400).json({ error: "Invalid note ID" });
+    return;
+  }
+  const [note] = await db
+    .select({ id: notesTable.id, title: notesTable.title })
+    .from(notesTable)
+    .where(eq(notesTable.id, params.data.noteId))
+    .limit(1);
+  if (!note) {
+    res.status(404).json({ error: "Note session not found" });
+    return;
+  }
+  const cards = await db
+    .select({
+      id: libraryCardsTable.id,
+      cardId: libraryCardsTable.cardId,
+      sourceExcerpt: generatedCardsTable.sourceExcerpt,
+      concept: libraryCardsTable.concept,
+      question: libraryCardsTable.question,
+      answer: libraryCardsTable.answer,
+      editedByUser: libraryCardsTable.editedByUser,
+      createdAt: libraryCardsTable.createdAt,
+    })
+    .from(libraryCardsTable)
+    .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
+    .where(
+      and(
+        eq(generatedCardsTable.noteId, note.id),
+        eq(generatedCardsTable.status, "approved"),
+      ),
+    )
+    .orderBy(desc(libraryCardsTable.createdAt));
+  res.json(
+    FetchVerifiedGuideResponse.parse({
+      noteId: note.id,
+      title: note.title,
+      cards,
+    }),
+  );
 });
 
 router.get("/library", async (req, res): Promise<void> => {

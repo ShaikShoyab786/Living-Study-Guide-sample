@@ -123,6 +123,28 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/GeneratedCard"
+  /notes/{noteId}/cards/more:
+    post:
+      operationId: generateMoreCards
+      tags: [study]
+      summary: Generate new, uncovered cards for a note
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Newly generated cards and whether more may be available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdditionalCardsResult"
+        "404":
+          description: Note not found
+        "503":
+          description: Additional questions could not be generated
   /notes/{noteId}/extract:
     post:
       operationId: extractStudyPack
@@ -189,6 +211,40 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/LibraryCard"
+  /library/guides:
+    get:
+      operationId: listVerifiedGuides
+      tags: [study]
+      summary: List note sessions with approved study cards
+      responses:
+        "200":
+          description: Verified guide sessions with approved-card counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VerifiedGuideSummary"
+  /library/guides/{noteId}:
+    get:
+      operationId: fetchVerifiedGuide
+      tags: [study]
+      summary: Get approved study cards for one note session
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One verified study guide and its matching approved cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifiedGuide"
+        "404":
+          description: Note session not found
   /study/summary:
     get:
       operationId: getStudySummary
@@ -325,6 +381,62 @@ components:
           type: string
           enum: [ai, demo]
       required: [cards, mode]
+    AdditionalCardsResult:
+      type: object
+      properties:
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedCard"
+        hasMore:
+          type: boolean
+        mode:
+          type: string
+          enum: [ai, demo]
+      required: [cards, hasMore, mode]
+    VerifiedGuideSummary:
+      type: object
+      properties:
+        noteId:
+          type: string
+        title:
+          type: string
+        approvedCount:
+          type: integer
+      required: [noteId, title, approvedCount]
+    VerifiedGuideCard:
+      type: object
+      properties:
+        id:
+          type: string
+        cardId:
+          type: string
+        sourceExcerpt:
+          type: string
+        concept:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+        editedByUser:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, cardId, sourceExcerpt, concept, question, answer, editedByUser, createdAt]
+    VerifiedGuide:
+      type: object
+      properties:
+        noteId:
+          type: string
+        title:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerifiedGuideCard"
+      required: [noteId, title, cards]
     PdfStudyPack:
       type: object
       properties:
