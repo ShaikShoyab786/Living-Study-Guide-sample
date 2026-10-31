@@ -83,7 +83,7 @@ function Shell({ children }: { children: ReactNode }) {
           <span className="brand-mark"><BookOpenCheck size={19} strokeWidth={1.8} /></span>
           <span>
             <span className="brand-title">Living Study</span>
-            <span className="brand-subtitle">your learning, in progress</span>
+            <span className="brand-subtitle">Make knowledge stay.</span>
           </span>
         </Link>
         <div className="nav-caption">Your study space</div>
@@ -253,6 +253,7 @@ function HomePage() {
   };
 
   return <div className="content">
+    <img className="miky-welcome" src="/miky-master.png" alt="" aria-hidden="true" />
     <div className="eyebrow">A little clarity, one note at a time</div>
     <h1 className="page-title">Turn your notes<br />into understanding.</h1>
     <p className="page-intro">Bring in a lecture, a reading, or a messy page of thoughts. We’ll shape it into source-linked cards for you to check and keep.</p>
@@ -266,7 +267,7 @@ function HomePage() {
         <label className="field-label" htmlFor="note-title">Note title</label>
         <input id="note-title" className="text-input" placeholder="e.g. Memory & learning — Week 04" value={title} maxLength={180} onChange={(event) => setTitle(event.target.value)} data-testid="input-note-title" />
         <label className="field-label" htmlFor="note-content">Your notes</label>
-        <textarea id="note-content" className="text-area" placeholder={selectedPdf ? 'Your PDF text will be extracted when you make the study pack.' : 'Paste your lecture notes here…&#10;&#10;A few ideas, a half-formed thought, a quote worth keeping. Start anywhere.'} value={rawText} onChange={(event) => { setRawText(event.target.value); if (selectedPdf) { setSelectedPdf(null); setFileName(''); } }} data-testid="input-note-content" />
+        <textarea id="note-content" className="text-area" placeholder={selectedPdf ? 'Your PDF text will be extracted when you make the study pack.' : 'Paste your lecture notes here…\n\nA few ideas, a half-formed thought, a quote worth keeping. Start anywhere.'} value={rawText} onChange={(event) => { setRawText(event.target.value); if (selectedPdf) { setSelectedPdf(null); setFileName(''); } }} data-testid="input-note-content" />
         <div className="input-meta"><span>{rawText.trim() ? `${rawText.trim().split(/\s+/).length} words` : selectedPdf ? 'PDF ready to process' : 'Nothing here yet'}</span><span>{fileName || 'Paste or upload notes'}</span></div>
         <div className="upload-row">
           <label className="upload-label">
@@ -394,7 +395,8 @@ function ReviewPage() {
         cardsQuery.isLoading ? <div className="panel" style={{ padding: 25 }}><LoadingBlock lines={5} /></div> :
         cardsQuery.isError ? <ErrorNotice retry={() => cardsQuery.refetch()} /> :
         !current ? (
-          <div className="review-empty">
+            <div className="review-empty">
+             <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />
             <div className="empty-mark"><Check size={22} /></div>
             <h2>Nothing waiting on you.</h2>
             <p>{notes.length ? 'Your queue is clear for this set of notes. New cards will appear here after you make another study pack.' : 'Add a note in your workspace and we’ll bring the first card here for a thoughtful check.'}</p>
@@ -491,6 +493,7 @@ function LibraryPage() {
         </article>)}
       </div> : (
         <div className="review-empty empty-library">
+          {!normalized && <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />}
           <div className="empty-mark"><Library size={21} /></div>
           <h2>{normalized ? 'No cards found.' : 'Your library is taking shape.'}</h2>
           <p>{normalized ? 'Try a different word or a broader idea.' : 'Once you approve a study card, it will be kept here for easy finding later.'}</p>

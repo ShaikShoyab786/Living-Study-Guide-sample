@@ -1,3 +1,11 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <rect width="180" height="180" rx="42" fill="#202722"/>
+  <circle cx="90" cy="100" r="37" fill="#96B99D" fill-opacity=".08"/>
+  <path d="M78 77C62 52 45 55 45 69C45 82 58 91 76 89M102 77C118 52 135 55 135 69C135 82 122 91 104 89" stroke="#A7B6AC" stroke-width="6" stroke-linecap="round"/>
+  <path d="M82 70L72 53M98 70L108 53" stroke="#96B99D" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="90" cy="91" r="21" fill="#96B99D"/>
+  <circle cx="90" cy="120" r="12" fill="#E8E9DF"/>
+  <circle cx="90" cy="120" r="19" fill="#E8E9DF" fill-opacity=".13"/>
+  <circle cx="83" cy="90" r="2.5" fill="#202722"/>
+  <circle cx="97" cy="90" r="2.5" fill="#202722"/>
 </svg>
