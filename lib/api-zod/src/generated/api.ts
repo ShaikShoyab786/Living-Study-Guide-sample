@@ -84,6 +84,19 @@ export const CreatePdfStudyPackResponse = zod.object({
 
 
 /**
+ * @summary Extract selectable text from a PDF
+ */
+export const ExtractPdfTextBody = zod.object({
+  "file": zod.instanceof(Blob)
+})
+
+export const ExtractPdfTextResponse = zod.object({
+  "text": zod.string(),
+  "pageCount": zod.number().int()
+})
+
+
+/**
  * @summary List generated cards for a note
  */
 export const ListNoteCardsParams = zod.object({

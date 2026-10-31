@@ -35,6 +35,15 @@ export interface PdfStudyPackInput {
   file: Blob | File;
 }
 
+export interface PdfTextInput {
+  file: Blob | File;
+}
+
+export interface PdfTextExtraction {
+  text: string;
+  pageCount: number;
+}
+
 export type GeneratedCardStatus = typeof GeneratedCardStatus[keyof typeof GeneratedCardStatus];
 
 

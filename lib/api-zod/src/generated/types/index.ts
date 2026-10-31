@@ -19,5 +19,7 @@ export * from './noteInput';
 export * from './pdfStudyPack';
 export * from './pdfStudyPackInput';
 export * from './pdfStudyPackMode';
+export * from './pdfTextExtraction';
+export * from './pdfTextInput';
 export * from './searchLibraryParams';
 export * from './studySummary';

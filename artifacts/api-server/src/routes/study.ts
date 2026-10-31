@@ -5,6 +5,7 @@ import {
   CreatePdfStudyPackResponse,
   CreateNoteBody,
   CreateNoteResponse,
+  ExtractPdfTextResponse,
   ExtractStudyPackParams,
   ExtractStudyPackResponse,
   GetStudySummaryResponse,
@@ -70,6 +71,39 @@ router.post("/notes", async (req, res): Promise<void> => {
   const [note] = await db.insert(notesTable).values(parsed.data).returning();
   res.status(201).json(CreateNoteResponse.parse(note));
 });
+
+router.post(
+  "/notes/pdf-text",
+  parsePdfUpload,
+  async (req, res): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: "Choose a PDF file to upload." });
+      return;
+    }
+    if (!req.file.originalname.toLowerCase().endsWith(".pdf")) {
+      req.file.buffer.fill(0);
+      res.status(400).json({ error: "Choose a file with a .pdf extension." });
+      return;
+    }
+
+    try {
+      const extraction = await extractPdfText(req.file.buffer);
+      res.json(ExtractPdfTextResponse.parse(extraction));
+    } catch (error) {
+      if (error instanceof PdfExtractionError) {
+        if (error.cause) {
+          req.log.error({ err: error.cause }, "Failed to extract text from PDF");
+        }
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      req.log.error({ err: error }, "Failed to extract text from PDF");
+      res.status(500).json({ error: "The PDF text could not be extracted." });
+    } finally {
+      req.file.buffer.fill(0);
+    }
+  },
+);
 
 router.post(
   "/notes/pdf-study-pack",

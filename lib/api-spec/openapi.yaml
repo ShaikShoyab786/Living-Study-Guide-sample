@@ -79,6 +79,30 @@ paths:
           description: Invalid or unreadable PDF
         "413":
           description: PDF exceeds the upload or page limit
+  /notes/pdf-text:
+    post:
+      operationId: extractPdfText
+      tags: [study]
+      summary: Extract selectable text from a PDF
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PdfTextInput"
+      responses:
+        "200":
+          description: Extracted PDF text and page count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfTextExtraction"
+        "400":
+          description: Invalid, unreadable, or password-protected PDF
+        "413":
+          description: PDF exceeds the upload or page limit
+        "422":
+          description: PDF contains no selectable text
   /notes/{noteId}/cards:
     get:
       operationId: listNoteCards
@@ -221,6 +245,21 @@ components:
           type: string
           format: binary
       required: [title, file]
+    PdfTextInput:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+      required: [file]
+    PdfTextExtraction:
+      type: object
+      properties:
+        text:
+          type: string
+        pageCount:
+          type: integer
+      required: [text, pageCount]
     GeneratedCard:
       type: object
       properties:

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   useCreateNote,
+  useExtractPdfText,
   useExtractStudyPack,
   useGetStudySummary,
   useHealthCheck,
@@ -66,6 +67,20 @@ function formatDate(date: string) {
   return Number.isNaN(parsed.getTime())
     ? 'Recently added'
     : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(parsed);
+}
+
+function getPdfErrorMessage(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('data' in error)) return undefined;
+  const data = (error as { data?: unknown }).data;
+  if (
+    data &&
+    typeof data === 'object' &&
+    'error' in data &&
+    typeof data.error === 'string'
+  ) {
+    return data.error;
+  }
+  return undefined;
 }
 
 function Shell({ children }: { children: ReactNode }) {
@@ -158,84 +173,77 @@ function HomePage() {
   const notesQuery = useListNotes();
   const summaryQuery = useGetStudySummary();
   const createNote = useCreateNote();
+  const pdfTextMutation = useExtractPdfText();
   const extractPack = useExtractStudyPack();
   const [title, setTitle] = useState('');
   const [rawText, setRawText] = useState('');
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
-  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const busy = createNote.isPending || extractPack.isPending || pdfBusy;
+  const [pdfExtracting, setPdfExtracting] = useState(false);
+  const [pdfPageCount, setPdfPageCount] = useState<number | null>(null);
+  const pdfRequestId = useRef(0);
+  const busy = createNote.isPending || extractPack.isPending || pdfExtracting;
   const notes = (notesQuery.data ?? []) as NoteRecord[];
   const summary = summaryQuery.data;
 
   const pickFile = async (file?: File) => {
     if (!file) return;
+    const requestId = ++pdfRequestId.current;
     const isPdf = /\.pdf$/i.test(file.name);
     const isText = /\.(txt|md|markdown)$/i.test(file.name);
     if (!isPdf && !isText) {
-      setSelectedPdf(null);
+      setPdfExtracting(false);
+      setPdfPageCount(null);
       setFileName('');
       setError('Please choose a .txt, .md, or .pdf file.');
       return;
     }
     if (isPdf) {
-      setSelectedPdf(file);
+      setPdfExtracting(true);
+      setPdfPageCount(null);
       setRawText('');
       setFileName(file.name);
       if (!title.trim()) setTitle(file.name.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '));
       setError('');
+      try {
+        const result = await pdfTextMutation.mutateAsync({ data: { file } });
+        if (requestId !== pdfRequestId.current) return;
+        setRawText(result.text);
+        setPdfPageCount(result.pageCount);
+      } catch (extractionError) {
+        if (requestId !== pdfRequestId.current) return;
+        setError(
+          getPdfErrorMessage(extractionError) ||
+            'The PDF text could not be extracted. Try another text-based PDF.',
+        );
+      } finally {
+        if (requestId === pdfRequestId.current) setPdfExtracting(false);
+      }
       return;
     }
+    setPdfExtracting(false);
+    setPdfPageCount(null);
     try {
-      setRawText(await file.text());
-      setSelectedPdf(null);
+      const text = await file.text();
+      if (requestId !== pdfRequestId.current) return;
+      setRawText(text);
+      setPdfPageCount(null);
       setFileName(file.name);
       if (!title.trim()) setTitle(file.name.replace(/\.(txt|md|markdown)$/i, '').replace(/[-_]/g, ' '));
       setError('');
     } catch {
-      setError('We couldn’t open that file. You can paste the notes instead.');
+      if (requestId === pdfRequestId.current) {
+        setError('We couldn’t open that file. You can paste the notes instead.');
+      }
     }
   };
 
   const handleExtract = async () => {
-    if (!title.trim() || (!selectedPdf && !rawText.trim())) {
+    if (!title.trim() || !rawText.trim()) {
       setError('Add a title and some notes first. A few clear paragraphs work beautifully.');
       return;
     }
     setError('');
-    if (selectedPdf && !rawText.trim()) {
-      setPdfBusy(true);
-      try {
-        const formData = new FormData();
-        formData.append('title', title.trim());
-        formData.append('file', selectedPdf, selectedPdf.name);
-        const response = await fetch('/api/notes/pdf-study-pack', {
-          method: 'POST',
-          body: formData,
-        });
-        const payload = await response.json() as {
-          note?: NoteRecord;
-          mode?: 'ai' | 'demo';
-          error?: string;
-        };
-        if (!response.ok) throw new Error(payload.error || 'The PDF could not be processed.');
-        if (!payload.note || !payload.mode) throw new Error('The PDF study pack response was incomplete.');
-
-        sessionStorage.setItem(`study-pack-mode:${payload.note.id}`, payload.mode);
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: getListNotesQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
-          queryClient.invalidateQueries({ queryKey: getListNoteCardsQueryKey(payload.note.id) }),
-        ]);
-        setLocation(`/review?noteId=${encodeURIComponent(payload.note.id)}`);
-      } catch (uploadError) {
-        setError(uploadError instanceof Error ? uploadError.message : 'The PDF could not be processed.');
-      } finally {
-        setPdfBusy(false);
-      }
-      return;
-    }
     try {
       const note = await createNote.mutateAsync({ data: { title: title.trim(), rawText: rawText.trim() } });
       const extraction = await extractPack.mutateAsync({ noteId: note.id });
@@ -267,16 +275,16 @@ function HomePage() {
         <label className="field-label" htmlFor="note-title">Note title</label>
         <input id="note-title" className="text-input" placeholder="e.g. Memory & learning — Week 04" value={title} maxLength={180} onChange={(event) => setTitle(event.target.value)} data-testid="input-note-title" />
         <label className="field-label" htmlFor="note-content">Your notes</label>
-        <textarea id="note-content" className="text-area" placeholder={selectedPdf ? 'Your PDF text will be extracted when you make the study pack.' : 'Paste your lecture notes here…\n\nA few ideas, a half-formed thought, a quote worth keeping. Start anywhere.'} value={rawText} onChange={(event) => { setRawText(event.target.value); if (selectedPdf) { setSelectedPdf(null); setFileName(''); } }} data-testid="input-note-content" />
-        <div className="input-meta"><span>{rawText.trim() ? `${rawText.trim().split(/\s+/).length} words` : selectedPdf ? 'PDF ready to process' : 'Nothing here yet'}</span><span>{fileName || 'Paste or upload notes'}</span></div>
+        <textarea id="note-content" className="text-area" placeholder={pdfExtracting ? 'Extracting text from your PDF…' : 'Paste your lecture notes here…\n\nA few ideas, a half-formed thought, a quote worth keeping. Start anywhere.'} value={rawText} onChange={(event) => { pdfRequestId.current += 1; setPdfExtracting(false); setRawText(event.target.value); }} data-testid="input-note-content" />
+        <div className="input-meta" aria-live="polite"><span>{pdfExtracting ? 'Extracting PDF text…' : rawText.trim() ? `${rawText.trim().split(/\s+/).length} words${pdfPageCount ? ` · ${pdfPageCount} PDF pages extracted` : ''}` : 'Nothing here yet'}</span><span>{fileName || 'Paste or upload notes'}</span></div>
         <div className="upload-row">
           <label className="upload-label">
             <Upload size={15} />
             <span>{fileName ? 'Choose another file' : 'Upload .txt, .md, or .pdf'}</span>
-            <input type="file" accept=".txt,.md,.pdf,.markdown,text/plain,text/markdown,application/pdf" onChange={(event) => pickFile(event.target.files?.[0])} data-testid="input-notes-file" />
+            <input type="file" accept=".txt,.md,.pdf,.markdown,text/plain,text/markdown,application/pdf" onChange={(event) => { void pickFile(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} data-testid="input-notes-file" />
           </label>
           <button className="btn btn-primary" onClick={handleExtract} disabled={busy} data-testid="button-extract-pack">
-            {busy ? <><LoaderCircle size={15} className="animate-spin" /> {pdfBusy ? 'Reading PDF…' : createNote.isPending ? 'Saving note…' : 'Finding the ideas…'}</> : <>Make my study pack <Sparkles size={15} /></>}
+            {busy ? <><LoaderCircle size={15} className="animate-spin" /> {pdfExtracting ? 'Extracting PDF text…' : createNote.isPending ? 'Saving note…' : 'Finding the ideas…'}</> : <>Make my study pack <Sparkles size={15} /></>}
           </button>
         </div>
         {error && <p className="notice" role="alert">{error}</p>}

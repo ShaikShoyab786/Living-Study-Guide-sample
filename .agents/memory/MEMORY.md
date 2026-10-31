@@ -1,2 +1,2 @@
-- [PDF.js on Node](pdfjs-node-text-extraction.md) — optional canvas/polyfill warnings do not prevent text extraction; avoid native canvas unless rendering is needed.
+- [PDF.js on Node](pdfjs-node-text-extraction.md) — text extraction does not need canvas; externalize PDF.js in esbuild so its dynamic worker resolves correctly.
 - [Living Study brand identity](living-study-brand.md) — preserve the official palette, typography, tagline, and one consistent Miky master asset.

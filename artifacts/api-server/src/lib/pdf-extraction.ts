@@ -6,8 +6,9 @@ export class PdfExtractionError extends Error {
   constructor(
     message: string,
     readonly statusCode: 400 | 413 | 422,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "PdfExtractionError";
   }
 }
@@ -54,16 +55,24 @@ export async function extractPdfText(
     const text = pageTexts.filter(Boolean).join("\n\n").trim();
     if (!text) {
       throw new PdfExtractionError(
-        "No selectable text was found in this PDF. Try a text-based PDF.",
+        "No selectable text was found. OCR may be required for scanned PDFs.",
         422,
       );
     }
     return { text, pageCount: document.numPages };
   } catch (error) {
     if (error instanceof PdfExtractionError) throw error;
+    if (error instanceof Error && error.name === "PasswordException") {
+      throw new PdfExtractionError(
+        "This PDF is password-protected. Remove its password and try again.",
+        400,
+        error,
+      );
+    }
     throw new PdfExtractionError(
       "This PDF could not be read. Check that it is not damaged or password-protected.",
       400,
+      error,
     );
   } finally {
     await loadingTask.destroy();

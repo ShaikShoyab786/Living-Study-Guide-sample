@@ -29,6 +29,8 @@ import type {
   NoteInput,
   PdfStudyPack,
   PdfStudyPackInput,
+  PdfTextExtraction,
+  PdfTextInput,
   SearchLibraryParams,
   StudySummary
 } from './api.schemas';
@@ -378,6 +380,82 @@ export const useCreatePdfStudyPack = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreatePdfStudyPackMutationOptions(options));
+    }
+
+export const getExtractPdfTextUrl = () => {
+
+
+
+
+  return `/api/notes/pdf-text`
+}
+
+/**
+ * @summary Extract selectable text from a PDF
+ */
+export const extractPdfText = async (pdfTextInput: PdfTextInput, options?: Parameters<typeof customFetch>[1]): Promise<PdfTextExtraction> => {
+    const formData = new FormData();
+formData.append(`file`, pdfTextInput.file);
+
+  return customFetch<PdfTextExtraction>(getExtractPdfTextUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getExtractPdfTextMutationKey = () => ['extractPdfText'] as const;
+
+export const getExtractPdfTextMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractPdfText>>, TError,ExtractPdfTextMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof extractPdfText>>, TError,ExtractPdfTextMutationVariables, TContext> => {
+
+const mutationKey = getExtractPdfTextMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractPdfText>>, ExtractPdfTextMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  extractPdfText(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExtractPdfTextMutationResult = NonNullable<Awaited<ReturnType<typeof extractPdfText>>>
+    export type ExtractPdfTextMutationBody = BodyType<PdfTextInput>
+    export type ExtractPdfTextMutationError = ErrorType<void>
+    export type ExtractPdfTextMutationVariables = {data: BodyType<PdfTextInput>}
+
+    /**
+ * @summary Extract selectable text from a PDF
+ */
+export const useExtractPdfText = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractPdfText>>, TError,ExtractPdfTextMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof extractPdfText>>,
+        TError,
+        ExtractPdfTextMutationVariables,
+        TContext
+      > => {
+      return useMutation(getExtractPdfTextMutationOptions(options));
     }
 
 export const getListNoteCardsUrl = (noteId: string,) => {
