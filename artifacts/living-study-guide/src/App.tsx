@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ClerkProvider, SignIn, SignUp, useClerk } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import {
   useCreateNote,
   useDeleteNote,
@@ -10,6 +13,7 @@ import {
   useExtractStudyPack,
   useFetchVerifiedGuide,
   useGenerateMoreCards,
+  useGetAuthSession,
   useGetStudySummary,
   useHealthCheck,
   useListVerifiedGuides,
@@ -17,7 +21,10 @@ import {
   useListNotes,
   useReviewCard,
   useSearchLibrary,
+  useTransferGuestData,
+  useUpdateOnboardingProgress,
   getFetchVerifiedGuideQueryKey,
+  getGetAuthSessionQueryKey,
   getGetStudySummaryQueryKey,
   getListNoteCardsQueryKey,
   getListNotesQueryKey,
@@ -46,9 +53,10 @@ import {
   X,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
-import type { ReactNode } from 'react';
 import welcomeMiky from '@assets/Cheerful_Firefly_Reading_a_Book_1793447095602.png';
 import sidebarMiky from '@assets/miky-sidebar_1793431828258.png';
+import { OnboardingTour } from '@/components/onboarding-tour';
+import { PublicEntry } from '@/components/public-entry';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,6 +71,57 @@ import {
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1, refetchOnWindowFocus: false } },
 });
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function stripBase(path: string) {
+  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#527F60',
+    colorForeground: '#202923',
+    colorMutedForeground: '#647168',
+    colorDanger: '#A6534B',
+    colorBackground: '#FBFCF8',
+    colorInput: '#F0F3EE',
+    colorInputForeground: '#202923',
+    colorNeutral: '#E1E7E0',
+    fontFamily: 'Manrope, sans-serif',
+    borderRadius: '0.8rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#FBFCF8] rounded-2xl w-[440px] max-w-full overflow-hidden',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[#202923] font-semibold',
+    headerSubtitle: 'text-[#647168]',
+    formFieldLabel: 'text-[#34443A]',
+    formFieldInput: 'bg-[#F0F3EE] text-[#202923] border-[#D8E1D8]',
+    formFieldRow: { display: 'none' },
+    formButtonPrimary: { display: 'none' },
+    dividerRow: { display: 'none' },
+    alternativeMethods: { display: 'none' },
+    socialButtonsBlockButton: 'bg-[#F0F3EE] border-[#D8E1D8] text-[#202923]',
+    socialButtonsBlockButtonText: { color: '#202923', fontWeight: 600 },
+    footerActionLink: 'text-[#527F60]',
+    footerActionText: 'text-[#647168]',
+    dividerText: 'text-[#647168]',
+  },
+};
 
 type NoteRecord = { id: string; title: string; rawText: string; createdAt: string };
 type CardRecord = {
@@ -110,16 +169,90 @@ function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { signOut } = useClerk();
+  const authSessionQuery = useGetAuthSession({
+    query: { queryKey: getGetAuthSessionQueryKey(), staleTime: 0, refetchOnMount: 'always' },
+  });
+  const session = authSessionQuery.data;
   const summary = useGetStudySummary();
   const health = useHealthCheck();
   const notesQuery = useListNotes();
   const deleteNote = useDeleteNote();
+  const transferGuest = useTransferGuestData();
+  const updateOnboarding = useUpdateOnboardingProgress();
   const notes = (notesQuery.data ?? []) as NoteRecord[];
   const [notePendingDelete, setNotePendingDelete] = useState<NoteRecord | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferDismissed, setTransferDismissed] = useState(false);
+  const [transferError, setTransferError] = useState('');
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStep, setTourStep] = useState(1);
+  const autoTourIdentity = useRef('');
   const selectedNote = location.startsWith('/review/') ? decodeURIComponent(location.slice('/review/'.length)) : '';
   const isGuideSelected = location.startsWith('/library/') ? decodeURIComponent(location.slice('/library/'.length)) : '';
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('living-study-theme');
+    return saved === 'dark' ? 'dark' : 'light';
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+  const onboardingStatus = session?.onboarding?.status;
+  const onboardingStep = session?.onboarding?.step ?? 1;
+  const onboardingIdentity = session?.user?.id ?? session?.kind ?? '';
+  useEffect(() => {
+    setTransferDismissed(false);
+  }, [session?.user?.id]);
+  useEffect(() => {
+    if (!session || (session.kind !== 'guest' && session.kind !== 'user')) return;
+    if (session.kind === 'user' && session.guestAvailable && !transferDismissed) return;
+    if (autoTourIdentity.current === onboardingIdentity) return;
+    autoTourIdentity.current = onboardingIdentity;
+    if (onboardingStatus === 'completed' || onboardingStatus === 'skipped') return;
+    setTourStep(onboardingStatus === 'in_progress' ? onboardingStep : 1);
+    setTourOpen(true);
+  }, [onboardingIdentity, onboardingStatus, onboardingStep, session, transferDismissed]);
+  useEffect(() => {
+    if (session?.kind === 'user' && session.guestAvailable && !transferDismissed) {
+      setTransferOpen(true);
+      setTransferError('');
+    }
+  }, [session?.kind, session?.guestAvailable, transferDismissed]);
+  const refreshAuthSession = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: getGetAuthSessionQueryKey() });
+  }, [queryClient]);
+  const replayTour = async () => {
+    try {
+      await updateOnboarding.mutateAsync({ data: { status: 'not_started', step: 1 } });
+      await queryClient.invalidateQueries({ queryKey: getGetAuthSessionQueryKey() });
+      setTourStep(1);
+      setTourOpen(true);
+      setProfileOpen(false);
+      setLocation('/');
+    } catch {
+      setTransferError('The tour could not be restarted just now.');
+    }
+  };
+  const confirmGuestTransfer = async () => {
+    if (transferGuest.isPending) return;
+    setTransferError('');
+    try {
+      await transferGuest.mutateAsync({ data: { confirmed: true } });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetAuthSessionQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListNotesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListVerifiedGuidesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getSearchLibraryQueryKey() }),
+      ]);
+      setTransferOpen(false);
+      setTransferDismissed(true);
+    } catch {
+      setTransferError('Your guest notes were not transferred. They are still available in the guest workspace. Please try again.');
+    }
+  };
   const pageLabel = location === '/'
     ? 'Workspace'
     : location.startsWith('/review')
@@ -171,14 +304,14 @@ function Shell({ children }: { children: ReactNode }) {
         </Link>
         <div className="nav-caption">Your study space</div>
         <nav className="nav-list" aria-label="Main navigation">
-          <Link href="/" className={`nav-link ${location === '/' ? 'active' : ''}`} data-testid="link-workspace">
+            <Link href="/" className={`nav-link ${location === '/' ? 'active' : ''}`} data-testid="link-workspace" data-tour="workspace-nav">
             <NotebookPen size={17} /> Workspace
           </Link>
-          <Link href="/review" className={`nav-link ${location === '/review' || location.startsWith('/review/') ? 'active' : ''}`} data-testid="link-review">
+            <Link href="/review" className={`nav-link ${location === '/review' || location.startsWith('/review/') ? 'active' : ''}`} data-testid="link-review" data-tour="review-hub">
             <CheckCheck size={17} /> Review Hub
             {pending > 0 && <span className="nav-count">{pending}</span>}
           </Link>
-          <Link href="/library" className={`nav-link ${location === '/library' ? 'active' : ''}`} data-testid="link-library">
+            <Link href="/library" className={`nav-link ${location === '/library' ? 'active' : ''}`} data-testid="link-library" data-tour="library-nav">
             <Library size={17} /> Verified Library
           </Link>
         </nav>
@@ -238,11 +371,61 @@ function Shell({ children }: { children: ReactNode }) {
             <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`} data-testid="button-theme-toggle">
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
-            <span className="user-chip" aria-label="Study with Miky">SM</span>
+            <div className="profile-wrap">
+              <button
+                className="user-chip"
+                type="button"
+                aria-label="Open profile and help menu"
+                aria-expanded={profileOpen}
+                onClick={() => setProfileOpen((open) => !open)}
+                data-testid="button-profile-menu"
+              >
+                {session?.user?.imageUrl
+                  ? <img src={session.user.imageUrl} alt="" />
+                  : (session?.user?.name || session?.user?.email || 'M').slice(0, 1).toUpperCase()}
+              </button>
+              {profileOpen && <div className="profile-menu" role="menu" data-testid="menu-profile">
+                <div className="profile-menu-user">
+                  <strong>{session?.user?.name || (session?.kind === 'guest' ? 'Guest workspace' : 'Your workspace')}</strong>
+                  {session?.user?.email && <span>{session.user.email}</span>}
+                </div>
+                <button type="button" role="menuitem" onClick={() => void replayTour()} disabled={updateOnboarding.isPending} data-testid="button-replay-tour">Replay Tour</button>
+                {session?.kind === 'guest'
+                  ? <Link href="/sign-up" role="menuitem" onClick={() => setProfileOpen(false)} data-testid="link-create-account">Create account</Link>
+                  : session?.kind === 'user' && <button type="button" role="menuitem" onClick={() => void signOut({ redirectUrl: basePath || '/' })} data-testid="button-sign-out">Sign out</button>}
+                {session?.kind === 'user' && session.guestAvailable && <button type="button" role="menuitem" onClick={() => { setTransferError(''); setTransferOpen(true); setProfileOpen(false); }} data-testid="button-open-transfer">Transfer guest notes</button>}
+              </div>}
+            </div>
           </div>
         </header>
         {children}
       </main>
+      <OnboardingTour
+        open={tourOpen}
+        step={tourStep}
+        onClose={() => setTourOpen(false)}
+        onFinish={() => {
+          setTourOpen(false);
+          setLocation('/');
+          refreshAuthSession();
+        }}
+        onStepChange={setTourStep}
+        onProgressSaved={refreshAuthSession}
+      />
+      {transferOpen && session?.kind === 'user' && session.guestAvailable && <div className="transfer-overlay">
+        <section className="transfer-dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-title" data-testid="dialog-guest-transfer">
+          <span className="eyebrow">WELCOME TO YOUR ACCOUNT</span>
+          <h2 id="transfer-title">Bring your guest notes along?</h2>
+          <p>Transfer the notes from this guest workspace into your account. You can choose not to transfer them.</p>
+          {transferError && <p className="transfer-error" role="alert" data-testid="text-transfer-error">{transferError}</p>}
+          <div className="transfer-actions">
+            <button type="button" className="btn btn-outline" onClick={() => { setTransferOpen(false); setTransferDismissed(true); }} disabled={transferGuest.isPending} data-testid="button-transfer-later">Not now</button>
+            <button type="button" className="btn btn-primary" onClick={() => void confirmGuestTransfer()} disabled={transferGuest.isPending} data-testid="button-transfer-confirm">
+              {transferGuest.isPending ? 'Transferring…' : 'Transfer guest notes'}
+            </button>
+          </div>
+        </section>
+      </div>}
       <AlertDialog
         open={Boolean(notePendingDelete)}
         onOpenChange={(open) => {
@@ -387,7 +570,7 @@ function HomePage() {
   };
 
   return <div className="content">
-    <div className="welcome-hero">
+    <div className="welcome-hero" data-tour="workspace-welcome">
       <div className="welcome-copy">
         <div className="eyebrow">YOUR LITTLE LEARNING COMPANION</div>
         <h1 className="page-title">Let’s make learning stick!</h1>
@@ -402,7 +585,7 @@ function HomePage() {
     </div>
 
     <div className="workspace-grid">
-      <section className="panel note-panel">
+      <section className="panel note-panel" data-tour="study-material">
         <div className="panel-heading">
           <div><h2>Start with your notes</h2><p>Paste notes or add a text or PDF file.</p></div>
           <span className="step-tag">01 / 03</span>
@@ -418,7 +601,7 @@ function HomePage() {
             <span>{fileName ? 'Choose another file' : 'Upload .txt, .md, or .pdf'}</span>
             <input type="file" accept=".txt,.md,.pdf,.markdown,text/plain,text/markdown,application/pdf" onChange={(event) => { void pickFile(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} data-testid="input-notes-file" />
           </label>
-          <button className="btn btn-primary" onClick={handleExtract} disabled={busy} data-testid="button-extract-pack">
+          <button className="btn btn-primary" onClick={handleExtract} disabled={busy} data-testid="button-extract-pack" data-tour="make-pack">
             {busy ? <><LoaderCircle size={15} className="animate-spin" /> {pdfExtracting ? 'Extracting PDF text…' : createNote.isPending ? 'Saving note…' : 'Finding the ideas…'}</> : <>Make my study pack <Sparkles size={15} /></>}
           </button>
         </div>
@@ -570,7 +753,7 @@ function ReviewPage() {
     <div className="eyebrow">MIKY HAS SOMETHING FOR YOU</div>
     <h1 className="page-title">Let’s check what we’ve learned!</h1>
     <p className="page-intro">I’ve prepared some questions from your notes. Let’s go through them together and keep the ones that make sense.</p>
-    <div className="review-layout">
+    <div className="review-layout" data-tour="review-actions">
       <div className="review-controls">
         <span>{pendingCards.length ? `${pendingCards.length} card${pendingCards.length === 1 ? '' : 's'} to look over` : 'Your review queue'}</span>
         {notes.length > 0 && <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -665,7 +848,7 @@ function LibraryPage() {
   const guidesQuery = useListVerifiedGuides();
   const cards = (libraryQuery.data ?? []) as LibraryRecord[];
 
-  return <div className="content">
+  return <div className="content" data-tour="verified-library">
     <div className="eyebrow">YOUR GROWING KNOWLEDGE COLLECTION</div>
     <h1 className="page-title">Look how much you’ve learned!</h1>
     <p className="page-intro">Every verified card is another little piece of knowledge worth keeping.</p>
@@ -768,31 +951,128 @@ function NotFound() {
   </div>;
 }
 
-function Router() {
-  const [location] = useLocation();
+function HomeRoute() {
+  const sessionQuery = useGetAuthSession({
+    query: { queryKey: getGetAuthSessionQueryKey(), staleTime: 0, refetchOnMount: 'always' },
+  });
+  const kind = sessionQuery.data?.kind;
+  if (sessionQuery.isLoading) {
+    return <main className="public-loading" aria-label="Loading your workspace"><div className="loading-orbit" /></main>;
+  }
+  if (kind === 'guest' || kind === 'user') return <Shell><HomePage /></Shell>;
+  return <PublicEntry />;
+}
+
+function WorkspaceRouter() {
+  const [location, setLocation] = useLocation();
+  const sessionQuery = useGetAuthSession({
+    query: { queryKey: getGetAuthSessionQueryKey(), staleTime: 0, refetchOnMount: 'always' },
+  });
+  const kind = sessionQuery.data?.kind;
+  useEffect(() => {
+    if (kind === 'anonymous' || sessionQuery.isError) setLocation('/');
+  }, [kind, sessionQuery.isError, setLocation]);
+  if (sessionQuery.isLoading || sessionQuery.isError) {
+    return <main className="public-loading" aria-label="Loading your workspace"><div className="loading-orbit" /></main>;
+  }
+  if (kind !== 'guest' && kind !== 'user') return null;
   return <ErrorBoundary resetKey={location}>
     <Shell>
       <Switch>
-        <Route path="/" component={HomePage} />
         <Route path="/review/:noteId" component={ReviewPage} />
         <Route path="/review" component={ReviewPage} />
-        <Route path="/library" component={LibraryPage} />
         <Route path="/library/:noteId" component={GuideDetailPage} />
+        <Route path="/library" component={LibraryPage} />
         <Route component={NotFound} />
       </Switch>
     </Shell>
   </ErrorBoundary>;
 }
 
+function SignInPage() {
+  return <main className="auth-page">
+    <Link href="/" className="auth-brand" data-testid="link-auth-brand">
+      <span className="brand-mark"><BookOpenCheck size={19} strokeWidth={1.8} /></span>
+      <span><strong>Study with Miky</strong><small>Make knowledge stay.</small></span>
+    </Link>
+    <SignIn
+      routing="path"
+      path={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      forceRedirectUrl={`${basePath}/`}
+      appearance={clerkAppearance}
+    />
+  </main>;
+}
+
+function SignUpPage() {
+  return <main className="auth-page">
+    <Link href="/" className="auth-brand" data-testid="link-auth-brand">
+      <span className="brand-mark"><BookOpenCheck size={19} strokeWidth={1.8} /></span>
+      <span><strong>Study with Miky</strong><small>Make knowledge stay.</small></span>
+    </Link>
+    <SignUp
+      routing="path"
+      path={`${basePath}/sign-up`}
+      signInUrl={`${basePath}/sign-in`}
+      forceRedirectUrl={`${basePath}/`}
+      appearance={clerkAppearance}
+    />
+  </main>;
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+        queryClient.clear();
+      }
+      previousUserId.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, queryClient]);
+  return null;
+}
+
+function ClerkRoutes() {
+  const [, setLocation] = useLocation();
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    localization={{
+      signIn: { start: { title: 'Welcome back', subtitle: 'Continue to your private study space' } },
+      signUp: { start: { title: 'Make a learning space of your own', subtitle: 'Your notes stay yours' } },
+    }}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+  >
+    <QueryClientProvider client={queryClient}>
+      <ClerkQueryClientCacheInvalidator />
+      <TooltipProvider>
+        <Switch>
+          <Route path="/" component={HomeRoute} />
+          <Route path="/sign-in/*?" component={SignInPage} />
+          <Route path="/sign-up/*?" component={SignUpPage} />
+          <Route component={WorkspaceRouter} />
+        </Switch>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ClerkProvider>;
+}
+
 function App() {
-  return <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-        <Router />
-      </WouterRouter>
-      <Toaster />
-    </TooltipProvider>
-  </QueryClientProvider>;
+  if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY');
+  return <WouterRouter base={basePath}>
+    <ClerkRoutes />
+  </WouterRouter>;
 }
 
 export default App;

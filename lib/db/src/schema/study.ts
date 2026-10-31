@@ -1,6 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
 import {
   boolean,
+  check,
   pgEnum,
   pgTable,
   text,
@@ -9,6 +10,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
+import { sql } from "drizzle-orm";
+import { guestSessionsTable, usersTable } from "./auth";
 
 export const cardStatusEnum = pgEnum("study_card_status", [
   "pending",
@@ -16,14 +19,31 @@ export const cardStatusEnum = pgEnum("study_card_status", [
   "rejected",
 ]);
 
-export const notesTable = pgTable("study_notes", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  title: text("title").notNull(),
-  rawText: text("raw_text").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const notesTable = pgTable(
+  "study_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    title: text("title").notNull(),
+    rawText: text("raw_text").notNull(),
+    ownerUserId: text("owner_user_id").references(
+      () => usersTable.clerkUserId,
+      { onDelete: "cascade" },
+    ),
+    guestSessionId: uuid("guest_session_id").references(
+      () => guestSessionsTable.id,
+      { onDelete: "cascade" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "study_notes_owner_exclusive",
+      sql`${table.ownerUserId} is null or ${table.guestSessionId} is null`,
+    ),
+  ],
+);
 
 export const generatedCardsTable = pgTable("generated_study_cards", {
   id: uuid("id").defaultRandom().primaryKey(),

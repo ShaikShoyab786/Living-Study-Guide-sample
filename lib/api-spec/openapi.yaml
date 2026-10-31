@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: study
     description: Notes, generated study cards, reviews, and verified library
+  - name: auth
+    description: Guest sessions, sign-in state, onboarding, and account conversion
 paths:
   /healthz:
     get:
@@ -26,6 +28,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/session:
+    get:
+      operationId: getAuthSession
+      tags: [auth]
+      summary: Get the current account or guest session
+      responses:
+        "200":
+          description: Current identity and onboarding progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+  /auth/guest:
+    post:
+      operationId: createGuestSession
+      tags: [auth]
+      summary: Start or resume an isolated guest session
+      responses:
+        "201":
+          description: Guest session created or resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+  /auth/onboarding:
+    patch:
+      operationId: updateOnboardingProgress
+      tags: [auth]
+      summary: Save onboarding progress for the current identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingUpdate"
+      responses:
+        "200":
+          description: Updated onboarding progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingProgress"
+        "401":
+          description: No valid account or guest session
+  /auth/guest/transfer:
+    post:
+      operationId: transferGuestData
+      tags: [auth]
+      summary: Move confirmed guest notes into the signed-in account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestTransferInput"
+      responses:
+        "200":
+          description: Guest notes transferred transactionally
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestTransferResult"
+        "400":
+          description: Explicit confirmation is required
+        "401":
+          description: Signed-in account and active guest session are required
+        "409":
+          description: Guest session was already transferred
   /notes:
     get:
       operationId: listNotes
@@ -479,4 +549,66 @@ components:
         approved:
           type: integer
       required: [notes, pending, approved]
+    OnboardingProgress:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, skipped]
+        step:
+          type: integer
+          minimum: 1
+          maximum: 6
+        version:
+          type: integer
+          minimum: 1
+      required: [status, step, version]
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, "null"]
+        name:
+          type: [string, "null"]
+        imageUrl:
+          type: [string, "null"]
+      required: [id, email, name, imageUrl]
+    AuthSession:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [anonymous, guest, user]
+        guestAvailable:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        onboarding:
+          $ref: "#/components/schemas/OnboardingProgress"
+      required: [kind, guestAvailable]
+    OnboardingUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, skipped]
+        step:
+          type: integer
+          minimum: 1
+          maximum: 6
+      required: [status, step]
+    GuestTransferInput:
+      type: object
+      properties:
+        confirmed:
+          type: boolean
+      required: [confirmed]
+    GuestTransferResult:
+      type: object
+      properties:
+        movedNotes:
+          type: integer
+      required: [movedNotes]
 

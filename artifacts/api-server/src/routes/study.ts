@@ -1,6 +1,7 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, or, sql } from "drizzle-orm";
 import { Router, type IRouter, type RequestHandler } from "express";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 import {
   CreatePdfStudyPackResponse,
   CreateNoteBody,
@@ -31,8 +32,29 @@ import {
 } from "@workspace/db";
 import { extractAdditionalCards, extractCards } from "../lib/study-extraction";
 import { extractPdfText, PdfExtractionError } from "../lib/pdf-extraction";
+import {
+  getStudyOwner,
+  requireStudyOwner,
+  studyOwnerCondition,
+  studyOwnerValues,
+} from "../lib/study-owner";
 
 const router: IRouter = Router();
+const aiGenerationLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: (_req, res) => (getStudyOwner(res).kind === "guest" ? 10 : 40),
+  keyGenerator: (_req, res) => {
+    const owner = getStudyOwner(res);
+    return owner.kind === "guest"
+      ? `guest:${owner.guestSessionId}`
+      : `user:${owner.userId}`;
+  },
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {
+    error: "You’ve reached the study-generation limit for this hour. Try again later.",
+  },
+});
 const maxPdfUploadBytes = 15 * 1024 * 1024;
 const pdfUpload = multer({
   storage: multer.memoryStorage(),
@@ -59,25 +81,45 @@ const parsePdfUpload: RequestHandler = (req, res, next) => {
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const generatedCardFields = {
+  id: generatedCardsTable.id,
+  noteId: generatedCardsTable.noteId,
+  sourceExcerpt: generatedCardsTable.sourceExcerpt,
+  concept: generatedCardsTable.concept,
+  question: generatedCardsTable.question,
+  answer: generatedCardsTable.answer,
+  status: generatedCardsTable.status,
+  createdAt: generatedCardsTable.createdAt,
+};
+
+router.use(requireStudyOwner);
+
 router.get("/notes", async (_req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const notes = await db
     .select()
     .from(notesTable)
+    .where(studyOwnerCondition(owner))
     .orderBy(desc(notesTable.createdAt));
   res.json(ListNotesResponse.parse(notes));
 });
 
 router.post("/notes", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const parsed = CreateNoteBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const [note] = await db.insert(notesTable).values(parsed.data).returning();
+  const [note] = await db
+    .insert(notesTable)
+    .values({ ...parsed.data, ...studyOwnerValues(owner) })
+    .returning();
   res.status(201).json(CreateNoteResponse.parse(note));
 });
 
 router.delete("/notes/:noteId", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const noteId = req.params.noteId;
   if (!uuidPattern.test(noteId)) {
     res.status(400).json({ error: "Invalid note ID" });
@@ -86,7 +128,7 @@ router.delete("/notes/:noteId", async (req, res): Promise<void> => {
 
   const [deleted] = await db
     .delete(notesTable)
-    .where(eq(notesTable.id, noteId))
+    .where(and(eq(notesTable.id, noteId), studyOwnerCondition(owner)))
     .returning({ id: notesTable.id });
   if (!deleted) {
     res.status(404).json({ error: "Note not found" });
@@ -132,8 +174,10 @@ router.post(
 
 router.post(
   "/notes/pdf-study-pack",
+  aiGenerationLimit,
   parsePdfUpload,
   async (req, res): Promise<void> => {
+    const owner = getStudyOwner(res);
     if (!req.file) {
       res.status(400).json({ error: "Choose a PDF file to upload." });
       return;
@@ -164,7 +208,11 @@ router.post(
       const saved = await db.transaction(async (tx) => {
         const [note] = await tx
           .insert(notesTable)
-          .values({ title: title.data.trim(), rawText: text })
+          .values({
+            title: title.data.trim(),
+            rawText: text,
+            ...studyOwnerValues(owner),
+          })
           .returning();
         const cards =
           extraction.cards.length > 0
@@ -207,86 +255,55 @@ router.post(
 );
 
 router.get("/notes/:noteId/cards", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const params = ListNoteCardsParams.safeParse(req.params);
   if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
     res.status(400).json({ error: "Invalid note ID" });
     return;
   }
   const cards = await db
-    .select()
+    .select(generatedCardFields)
     .from(generatedCardsTable)
-    .where(eq(generatedCardsTable.noteId, params.data.noteId))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+    .where(
+      and(
+        eq(generatedCardsTable.noteId, params.data.noteId),
+        studyOwnerCondition(owner),
+      ),
+    )
     .orderBy(desc(generatedCardsTable.createdAt));
   res.json(ListNoteCardsResponse.parse(cards));
 });
 
-router.post("/notes/:noteId/extract", async (req, res): Promise<void> => {
-  const params = ExtractStudyPackParams.safeParse(req.params);
-  if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
-    res.status(400).json({ error: "Invalid note ID" });
-    return;
-  }
-  const [note] = await db
-    .select()
-    .from(notesTable)
-    .where(eq(notesTable.id, params.data.noteId))
-    .limit(1);
-  if (!note) {
-    res.status(404).json({ error: "Note not found" });
-    return;
-  }
+router.post(
+  "/notes/:noteId/extract",
+  aiGenerationLimit,
+  async (req, res): Promise<void> => {
+    const owner = getStudyOwner(res);
+    const params = ExtractStudyPackParams.safeParse(req.params);
+    if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
+      res.status(400).json({ error: "Invalid note ID" });
+      return;
+    }
+    const [note] = await db
+      .select()
+      .from(notesTable)
+      .where(
+        and(
+          eq(notesTable.id, params.data.noteId),
+          studyOwnerCondition(owner),
+        ),
+      )
+      .limit(1);
+    if (!note) {
+      res.status(404).json({ error: "Note not found" });
+      return;
+    }
 
-  const result = await extractCards(note.rawText);
-  if (result.mode === "demo") {
-    req.log.warn({ noteId: note.id }, "Using transparent demo card extraction");
-  }
-  const cards =
-    result.cards.length > 0
-      ? await db
-          .insert(generatedCardsTable)
-          .values(
-            result.cards.map((card) => ({
-              noteId: note.id,
-              sourceExcerpt: card.sourceExcerpt,
-              concept: card.concept,
-              question: card.question,
-              answer: card.answer,
-              status: "pending" as const,
-            })),
-          )
-          .returning()
-      : [];
-
-  res.json(ExtractStudyPackResponse.parse({ cards, mode: result.mode }));
-});
-
-router.post("/notes/:noteId/cards/more", async (req, res): Promise<void> => {
-  const params = GenerateMoreCardsParams.safeParse(req.params);
-  if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
-    res.status(400).json({ error: "Invalid note ID" });
-    return;
-  }
-  const [note] = await db
-    .select()
-    .from(notesTable)
-    .where(eq(notesTable.id, params.data.noteId))
-    .limit(1);
-  if (!note) {
-    res.status(404).json({ error: "Note not found" });
-    return;
-  }
-
-  const alreadyCovered = await db
-    .select({
-      sourceExcerpt: generatedCardsTable.sourceExcerpt,
-      concept: generatedCardsTable.concept,
-      question: generatedCardsTable.question,
-    })
-    .from(generatedCardsTable)
-    .where(eq(generatedCardsTable.noteId, note.id));
-
-  try {
-    const result = await extractAdditionalCards(note.rawText, alreadyCovered);
+    const result = await extractCards(note.rawText);
+    if (result.mode === "demo") {
+      req.log.warn({ noteId: note.id }, "Using transparent demo card extraction");
+    }
     const cards =
       result.cards.length > 0
         ? await db
@@ -304,22 +321,90 @@ router.post("/notes/:noteId/cards/more", async (req, res): Promise<void> => {
             .returning()
         : [];
 
-    res.json(
-      GenerateMoreCardsResponse.parse({
-        cards,
-        hasMore: result.hasMore,
-        mode: result.mode,
-      }),
-    );
-  } catch (error) {
-    req.log.error({ err: error, noteId: note.id }, "Failed to generate additional study cards");
-    res.status(503).json({
-      error: "Miky couldn’t find more questions just now. Try again shortly.",
-    });
-  }
-});
+    res.json(ExtractStudyPackResponse.parse({ cards, mode: result.mode }));
+  },
+);
+
+router.post(
+  "/notes/:noteId/cards/more",
+  aiGenerationLimit,
+  async (req, res): Promise<void> => {
+    const owner = getStudyOwner(res);
+    const params = GenerateMoreCardsParams.safeParse(req.params);
+    if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
+      res.status(400).json({ error: "Invalid note ID" });
+      return;
+    }
+    const [note] = await db
+      .select()
+      .from(notesTable)
+      .where(
+        and(
+          eq(notesTable.id, params.data.noteId),
+          studyOwnerCondition(owner),
+        ),
+      )
+      .limit(1);
+    if (!note) {
+      res.status(404).json({ error: "Note not found" });
+      return;
+    }
+
+    const alreadyCovered = await db
+      .select({
+        sourceExcerpt: generatedCardsTable.sourceExcerpt,
+        concept: generatedCardsTable.concept,
+        question: generatedCardsTable.question,
+      })
+      .from(generatedCardsTable)
+      .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+      .where(
+        and(
+          eq(generatedCardsTable.noteId, note.id),
+          studyOwnerCondition(owner),
+        ),
+      );
+
+    try {
+      const result = await extractAdditionalCards(note.rawText, alreadyCovered);
+      const cards =
+        result.cards.length > 0
+          ? await db
+              .insert(generatedCardsTable)
+              .values(
+                result.cards.map((card) => ({
+                  noteId: note.id,
+                  sourceExcerpt: card.sourceExcerpt,
+                  concept: card.concept,
+                  question: card.question,
+                  answer: card.answer,
+                  status: "pending" as const,
+                })),
+              )
+              .returning()
+          : [];
+
+      res.json(
+        GenerateMoreCardsResponse.parse({
+          cards,
+          hasMore: result.hasMore,
+          mode: result.mode,
+        }),
+      );
+    } catch (error) {
+      req.log.error(
+        { err: error, noteId: note.id },
+        "Failed to generate additional study cards",
+      );
+      res.status(503).json({
+        error: "Miky couldn’t find more questions just now. Try again shortly.",
+      });
+    }
+  },
+);
 
 router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const params = ReviewCardParams.safeParse(req.params);
   const parsed = ReviewCardBody.safeParse(req.body);
   if (
@@ -333,9 +418,15 @@ router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
     return;
   }
   const [current] = await db
-    .select()
+    .select(generatedCardFields)
     .from(generatedCardsTable)
-    .where(eq(generatedCardsTable.id, params.data.cardId))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+    .where(
+      and(
+        eq(generatedCardsTable.id, params.data.cardId),
+        studyOwnerCondition(owner),
+      ),
+    )
     .limit(1);
   if (!current) {
     res.status(404).json({ error: "Card not found" });
@@ -343,11 +434,29 @@ router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
   }
 
   if (parsed.data.action === "discard") {
+    const ownedNote = db
+      .select({ id: notesTable.id })
+      .from(notesTable)
+      .where(
+        and(
+          eq(notesTable.id, generatedCardsTable.noteId),
+          studyOwnerCondition(owner),
+        ),
+      );
     const [updated] = await db
       .update(generatedCardsTable)
       .set({ status: "rejected" })
-      .where(eq(generatedCardsTable.id, current.id))
+      .where(
+        and(
+          eq(generatedCardsTable.id, current.id),
+          exists(ownedNote),
+        ),
+      )
       .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
     res.json(ReviewCardResponse.parse(updated));
     return;
   }
@@ -371,11 +480,28 @@ router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
     answer: edited ? parsed.data.answer!.trim() : current.answer,
   };
   const updated = await db.transaction(async (tx) => {
+    const ownedNote = tx
+      .select({ id: notesTable.id })
+      .from(notesTable)
+      .where(
+        and(
+          eq(notesTable.id, generatedCardsTable.noteId),
+          studyOwnerCondition(owner),
+        ),
+      );
     const [card] = await tx
       .update(generatedCardsTable)
       .set({ ...finalCard, status: "approved" })
-      .where(eq(generatedCardsTable.id, current.id))
+      .where(
+        and(
+          eq(generatedCardsTable.id, current.id),
+          exists(ownedNote),
+        ),
+      )
       .returning();
+    if (!card) {
+      return undefined;
+    }
     await tx
       .insert(libraryCardsTable)
       .values({
@@ -390,10 +516,15 @@ router.patch("/cards/:cardId/review", async (req, res): Promise<void> => {
     return card;
   });
 
+  if (!updated) {
+    res.status(404).json({ error: "Card not found" });
+    return;
+  }
   res.json(ReviewCardResponse.parse(updated));
 });
 
 router.get("/library/guides", async (_req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const guides = await db
     .select({
       noteId: generatedCardsTable.noteId,
@@ -403,13 +534,19 @@ router.get("/library/guides", async (_req, res): Promise<void> => {
     .from(libraryCardsTable)
     .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
     .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
-    .where(eq(generatedCardsTable.status, "approved"))
+    .where(
+      and(
+        eq(generatedCardsTable.status, "approved"),
+        studyOwnerCondition(owner),
+      ),
+    )
     .groupBy(generatedCardsTable.noteId, notesTable.title)
     .orderBy(desc(sql`max(${libraryCardsTable.createdAt})`));
   res.json(ListVerifiedGuidesResponse.parse(guides));
 });
 
 router.get("/library/guides/:noteId", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const params = FetchVerifiedGuideParams.safeParse(req.params);
   if (!params.success || !uuidPattern.test(params.data?.noteId ?? "")) {
     res.status(400).json({ error: "Invalid note ID" });
@@ -418,7 +555,7 @@ router.get("/library/guides/:noteId", async (req, res): Promise<void> => {
   const [note] = await db
     .select({ id: notesTable.id, title: notesTable.title })
     .from(notesTable)
-    .where(eq(notesTable.id, params.data.noteId))
+    .where(and(eq(notesTable.id, params.data.noteId), studyOwnerCondition(owner)))
     .limit(1);
   if (!note) {
     res.status(404).json({ error: "Note session not found" });
@@ -437,10 +574,12 @@ router.get("/library/guides/:noteId", async (req, res): Promise<void> => {
     })
     .from(libraryCardsTable)
     .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
     .where(
       and(
         eq(generatedCardsTable.noteId, note.id),
         eq(generatedCardsTable.status, "approved"),
+        studyOwnerCondition(owner),
       ),
     )
     .orderBy(desc(libraryCardsTable.createdAt));
@@ -454,6 +593,7 @@ router.get("/library/guides/:noteId", async (req, res): Promise<void> => {
 });
 
 router.get("/library", async (req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const parsed = SearchLibraryQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -461,32 +601,62 @@ router.get("/library", async (req, res): Promise<void> => {
   }
   const query = parsed.data.query?.trim();
   const cards = await db
-    .select()
+    .select({
+      id: libraryCardsTable.id,
+      cardId: libraryCardsTable.cardId,
+      concept: libraryCardsTable.concept,
+      question: libraryCardsTable.question,
+      answer: libraryCardsTable.answer,
+      editedByUser: libraryCardsTable.editedByUser,
+      createdAt: libraryCardsTable.createdAt,
+    })
     .from(libraryCardsTable)
+    .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
     .where(
-      query
-        ? or(
+      and(
+        eq(generatedCardsTable.status, "approved"),
+        studyOwnerCondition(owner),
+        query
+          ? or(
             ilike(libraryCardsTable.concept, `%${query}%`),
             ilike(libraryCardsTable.question, `%${query}%`),
             ilike(libraryCardsTable.answer, `%${query}%`),
           )
-        : undefined,
+          : undefined,
+      ),
     )
     .orderBy(desc(libraryCardsTable.createdAt));
   res.json(SearchLibraryResponse.parse(cards));
 });
 
 router.get("/study/summary", async (_req, res): Promise<void> => {
+  const owner = getStudyOwner(res);
   const [noteCount] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(notesTable);
+    .from(notesTable)
+    .where(studyOwnerCondition(owner));
   const [pendingCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(generatedCardsTable)
-    .where(eq(generatedCardsTable.status, "pending"));
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+    .where(
+      and(
+        eq(generatedCardsTable.status, "pending"),
+        studyOwnerCondition(owner),
+      ),
+    );
   const [approvedCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(libraryCardsTable);
+    .select({ count: sql<number>`count(${libraryCardsTable.id})::int` })
+    .from(libraryCardsTable)
+    .innerJoin(generatedCardsTable, eq(libraryCardsTable.cardId, generatedCardsTable.id))
+    .innerJoin(notesTable, eq(generatedCardsTable.noteId, notesTable.id))
+    .where(
+      and(
+        eq(generatedCardsTable.status, "approved"),
+        studyOwnerCondition(owner),
+      ),
+    );
   res.json(
     GetStudySummaryResponse.parse({
       notes: noteCount.count,

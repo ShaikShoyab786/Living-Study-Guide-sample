@@ -160,6 +160,80 @@ export interface StudySummary {
   approved: number;
 }
 
+export type OnboardingProgressStatus = typeof OnboardingProgressStatus[keyof typeof OnboardingProgressStatus];
+
+
+export const OnboardingProgressStatus = {
+  not_started: 'not_started',
+  in_progress: 'in_progress',
+  completed: 'completed',
+  skipped: 'skipped',
+} as const;
+
+export interface OnboardingProgress {
+  status: OnboardingProgressStatus;
+  /**
+     * @minimum 1
+     * @maximum 6
+     */
+  step: number;
+  /** @minimum 1 */
+  version: number;
+}
+
+export interface AuthUser {
+  id: string;
+  /** @nullable */
+  email: string | null;
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+}
+
+export type AuthSessionKind = typeof AuthSessionKind[keyof typeof AuthSessionKind];
+
+
+export const AuthSessionKind = {
+  anonymous: 'anonymous',
+  guest: 'guest',
+  user: 'user',
+} as const;
+
+export interface AuthSession {
+  kind: AuthSessionKind;
+  guestAvailable: boolean;
+  user?: AuthUser;
+  onboarding?: OnboardingProgress;
+}
+
+export type OnboardingUpdateStatus = typeof OnboardingUpdateStatus[keyof typeof OnboardingUpdateStatus];
+
+
+export const OnboardingUpdateStatus = {
+  not_started: 'not_started',
+  in_progress: 'in_progress',
+  completed: 'completed',
+  skipped: 'skipped',
+} as const;
+
+export interface OnboardingUpdate {
+  status: OnboardingUpdateStatus;
+  /**
+     * @minimum 1
+     * @maximum 6
+     */
+  step: number;
+}
+
+export interface GuestTransferInput {
+  confirmed: boolean;
+}
+
+export interface GuestTransferResult {
+  movedNotes: number;
+}
+
 export type SearchLibraryParams = {
 query?: string;
 };

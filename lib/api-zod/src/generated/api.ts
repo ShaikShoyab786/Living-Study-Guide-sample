@@ -18,6 +18,92 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get the current account or guest session
+ */
+export const getAuthSessionResponseOnboardingStepMax = 6;
+
+
+
+
+export const GetAuthSessionResponse = zod.object({
+  "kind": zod.enum(['anonymous', 'guest', 'user']),
+  "guestAvailable": zod.boolean(),
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().nullable(),
+  "name": zod.string().nullable(),
+  "imageUrl": zod.string().nullable()
+}).optional(),
+  "onboarding": zod.object({
+  "status": zod.enum(['not_started', 'in_progress', 'completed', 'skipped']),
+  "step": zod.number().int().min(1).max(getAuthSessionResponseOnboardingStepMax),
+  "version": zod.number().int().min(1)
+}).optional()
+})
+
+
+/**
+ * @summary Start or resume an isolated guest session
+ */
+export const createGuestSessionResponseOnboardingStepMax = 6;
+
+
+
+
+export const CreateGuestSessionResponse = zod.object({
+  "kind": zod.enum(['anonymous', 'guest', 'user']),
+  "guestAvailable": zod.boolean(),
+  "user": zod.object({
+  "id": zod.string(),
+  "email": zod.string().nullable(),
+  "name": zod.string().nullable(),
+  "imageUrl": zod.string().nullable()
+}).optional(),
+  "onboarding": zod.object({
+  "status": zod.enum(['not_started', 'in_progress', 'completed', 'skipped']),
+  "step": zod.number().int().min(1).max(createGuestSessionResponseOnboardingStepMax),
+  "version": zod.number().int().min(1)
+}).optional()
+})
+
+
+/**
+ * @summary Save onboarding progress for the current identity
+ */
+export const updateOnboardingProgressBodyStepMax = 6;
+
+
+
+export const UpdateOnboardingProgressBody = zod.object({
+  "status": zod.enum(['not_started', 'in_progress', 'completed', 'skipped']),
+  "step": zod.number().int().min(1).max(updateOnboardingProgressBodyStepMax)
+})
+
+export const updateOnboardingProgressResponseStepMax = 6;
+
+
+
+
+export const UpdateOnboardingProgressResponse = zod.object({
+  "status": zod.enum(['not_started', 'in_progress', 'completed', 'skipped']),
+  "step": zod.number().int().min(1).max(updateOnboardingProgressResponseStepMax),
+  "version": zod.number().int().min(1)
+})
+
+
+/**
+ * @summary Move confirmed guest notes into the signed-in account
+ */
+export const TransferGuestDataBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const TransferGuestDataResponse = zod.object({
+  "movedNotes": zod.number().int()
+})
+
+
+/**
  * @summary List study notes
  */
 export const ListNotesResponseItem = zod.object({
