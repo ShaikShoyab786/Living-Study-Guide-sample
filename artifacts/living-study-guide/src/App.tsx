@@ -28,6 +28,7 @@ import {
   ArrowLeftRight,
   BookOpenCheck,
   Check,
+  CheckCircle2,
   CheckCheck,
   ChevronDown,
   FileText,
@@ -38,11 +39,14 @@ import {
   Sparkles,
   Sun,
   Moon,
+  Pencil,
   Upload,
   X,
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import type { ReactNode } from 'react';
+import welcomeMiky from '@assets/welcome.miky_1793431828259.png';
+import sidebarMiky from '@assets/miky-sidebar_1793431828258.png';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1, refetchOnWindowFocus: false } },
@@ -121,7 +125,7 @@ function Shell({ children }: { children: ReactNode }) {
         <Link href="/" className="brand" data-testid="link-home-brand">
           <span className="brand-mark"><BookOpenCheck size={19} strokeWidth={1.8} /></span>
           <span>
-            <span className="brand-title">Living Study</span>
+            <span className="brand-title">Study with Miky</span>
             <span className="brand-subtitle">Make knowledge stay.</span>
           </span>
         </Link>
@@ -158,6 +162,7 @@ function Shell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <div className="sidebar-note">
+            <img src={sidebarMiky} alt="" aria-hidden="true" className="sidebar-miky" />
             <strong>Small steps stick.</strong>
             Review each connection, then keep the ideas worth returning to.
           </div>
@@ -177,7 +182,7 @@ function Shell({ children }: { children: ReactNode }) {
             <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`} data-testid="button-theme-toggle">
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
-            <span className="user-chip" aria-label="Personal workspace">LS</span>
+            <span className="user-chip" aria-label="Study with Miky">SM</span>
           </div>
         </header>
         {children}
@@ -294,10 +299,14 @@ function HomePage() {
   };
 
   return <div className="content">
-    <img className="miky-welcome" src="/miky-master.png" alt="" aria-hidden="true" />
-    <div className="eyebrow">A little clarity, one note at a time</div>
-    <h1 className="page-title">Turn your notes<br />into understanding.</h1>
-    <p className="page-intro">Bring in a lecture, a reading, or a messy page of thoughts. We’ll shape it into source-linked cards for you to check and keep.</p>
+    <div className="welcome-hero">
+      <div className="welcome-copy">
+        <div className="eyebrow">YOUR LITTLE LEARNING COMPANION</div>
+        <h1 className="page-title">Let’s make learning stick!</h1>
+        <p className="page-intro">Bring your notes, and I’ll help turn them into questions and knowledge worth keeping.</p>
+      </div>
+      <img className="miky-welcome" src={welcomeMiky} alt="Miky, your learning companion" />
+    </div>
 
     <div className="workspace-grid">
       <section className="panel note-panel">
@@ -337,7 +346,7 @@ function HomePage() {
         <section className="panel recent-panel">
           <div className="recent-header"><h3>Recent notes</h3><Link className="text-link" href="/review">Review cards</Link></div>
           {notesQuery.isLoading ? <LoadingBlock lines={2} /> : notesQuery.isError ? <ErrorNotice retry={() => notesQuery.refetch()} /> : notes.length === 0 ? (
-            <div style={{ color: 'var(--secondary-text)', fontSize: 11, lineHeight: 1.6 }}>Your first set of notes will find a home here.</div>
+            <div style={{ color: 'var(--secondary-text)', fontSize: 12, lineHeight: 1.7 }}>Nothing here just yet. Let’s start with your first set of notes!</div>
           ) : notes.slice(0, 3).map((note) => (
             <div className="recent-note" key={note.id} data-testid={`note-recent-${note.id}`}>
               <FileText className="recent-note-icon" size={15} />
@@ -378,6 +387,7 @@ function ReviewPage() {
   const [canGenerateMore, setCanGenerateMore] = useState(false);
   const [generationError, setGenerationError] = useState('');
   const [generationExhausted, setGenerationExhausted] = useState(false);
+  const [verifiedToast, setVerifiedToast] = useState(false);
 
   useEffect(() => {
     if (current) {
@@ -451,6 +461,10 @@ function ReviewPage() {
           ? { action, concept: concept.trim(), question: question.trim(), answer: answer.trim() }
           : { action },
       });
+      if (action === 'approve' || action === 'edit_approve') {
+        setVerifiedToast(true);
+        window.setTimeout(() => setVerifiedToast(false), 1300);
+      }
       await refresh(current);
     } catch {
       setActionError('That change didn’t save. Your card is still here—please try again.');
@@ -460,9 +474,9 @@ function ReviewPage() {
   const onSelectNote = (value: string) => setLocation(`/review/${encodeURIComponent(value)}`);
 
   return <div className="content">
-    <div className="eyebrow">A human check makes knowledge trustworthy</div>
-    <h1 className="page-title">Keep the good<br />connections.</h1>
-    <p className="page-intro">Look at the note beside its study card. If the idea holds up, keep it. If it needs your words, make it yours.</p>
+    <div className="eyebrow">MIKY HAS SOMETHING FOR YOU</div>
+    <h1 className="page-title">Let’s check what we’ve learned!</h1>
+    <p className="page-intro">I’ve prepared some questions from your notes. Let’s go through them together and keep the ones that make sense.</p>
     <div className="review-layout">
       <div className="review-controls">
         <span>{pendingCards.length ? `${pendingCards.length} card${pendingCards.length === 1 ? '' : 's'} to look over` : 'Your review queue'}</span>
@@ -476,10 +490,10 @@ function ReviewPage() {
       </div>
       <div className="generation-controls" aria-live="polite">
         {canGenerateMore && <button className="btn btn-outline btn-small" type="button" onClick={requestMore} disabled={generateMore.isPending} data-testid="button-generate-more">
-          {generateMore.isPending ? 'Finding more…' : 'Need more questions? Ask Miky'} <Sparkles size={13} />
+          {generateMore.isPending ? 'There’s more to explore! Let me find a few more interesting questions.' : 'Ask Miky for more questions'} {!generateMore.isPending && <Sparkles size={13} />}
         </button>}
         {generationError && <span className="inline-error" role="alert" data-testid="text-generation-error">{generationError}</span>}
-        {generationExhausted && <span className="generation-exhausted" data-testid="text-generation-exhausted">You’re all caught up — there aren’t any new distinct questions left in these notes.</span>}
+        {generationExhausted && <span className="generation-exhausted" data-testid="text-generation-exhausted">You’re all caught up! We’ve covered all the useful ideas in these notes. Great work!</span>}
       </div>
       {notesQuery.isLoading ? <div className="panel" style={{ padding: 25 }}><LoadingBlock lines={4} /></div> :
         notesQuery.isError ? <ErrorNotice retry={() => notesQuery.refetch()} /> :
@@ -487,10 +501,9 @@ function ReviewPage() {
         cardsQuery.isError ? <ErrorNotice retry={() => cardsQuery.refetch()} /> :
         !current ? (
             <div className="review-empty">
-             <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />
             <div className="empty-mark"><Check size={22} /></div>
-            <h2>Nothing waiting on you.</h2>
-            <p>{notes.length ? 'Your queue is clear for this set of notes. New cards will appear here after you make another study pack.' : 'Add a note in your workspace and we’ll bring the first card here for a thoughtful check.'}</p>
+            <h2>{notes.length ? 'Nothing waiting on you.' : 'Let’s begin with your notes.'}</h2>
+            <p>{notes.length ? 'Your queue is clear for this set of notes. New cards will appear here after you make another study pack.' : 'Nothing here just yet. Let’s start with your first set of notes!'}</p>
             <Link href="/" className="btn btn-primary" data-testid="link-review-workspace">Back to workspace <ArrowDownToLine size={14} /></Link>
           </div>
         ) : (
@@ -531,19 +544,23 @@ function ReviewPage() {
                 {editing ? <>
                   <button className="btn btn-outline btn-small" onClick={() => { setEditing(false); setConcept(current.concept); setQuestion(current.question); setAnswer(current.answer); }} data-testid="button-cancel-edit">Cancel</button>
                   <button className="btn btn-primary btn-small" disabled={reviewCard.isPending || !concept.trim() || !question.trim() || !answer.trim()} onClick={() => submitReview('edit_approve')} data-testid="button-save-edit">
-                    {reviewCard.isPending ? 'Saving…' : <>Save & approve <Check size={13} /></>}
+                    {reviewCard.isPending ? 'Saving…' : <>Save & Verify <CheckCircle2 size={14} /></>}
                   </button>
                 </> : <>
-                  <button className="btn btn-danger btn-small" disabled={reviewCard.isPending} onClick={() => submitReview('discard')} data-testid="button-discard-card"><X size={14} /> Discard</button>
-                  <button className="btn btn-outline btn-small" disabled={reviewCard.isPending} onClick={() => setEditing(true)} data-testid="button-edit-card">Make it mine</button>
+                  <button className="btn btn-outline btn-small" disabled={reviewCard.isPending} onClick={() => setEditing(true)} data-testid="button-edit-card"><Pencil size={14} /> Edit</button>
                   <button className="btn btn-primary btn-small" disabled={reviewCard.isPending} onClick={() => submitReview('approve')} data-testid="button-approve-card">
-                    {reviewCard.isPending ? 'Saving…' : <>Keep this <Check size={14} /></>}
+                    {reviewCard.isPending ? 'Saving…' : <>Verify <CheckCircle2 size={15} /></>}
                   </button>
+                  <button className="btn btn-outline btn-small btn-discard" disabled={reviewCard.isPending} onClick={() => submitReview('discard')} data-testid="button-discard-card"><X size={14} /> Discard</button>
                 </>}
               </div>
             </div>
           </article>
         )}
+      {verifiedToast && <div className="miky-toast" role="status" aria-live="polite" data-testid="toast-verified-card">
+        <img src={sidebarMiky} alt="" aria-hidden="true" />
+        <span>Miky delivered it to your Verified Library!</span>
+      </div>}
     </div>
   </div>;
 }
@@ -556,9 +573,9 @@ function LibraryPage() {
   const cards = (libraryQuery.data ?? []) as LibraryRecord[];
 
   return <div className="content">
-    <div className="eyebrow">Your verified, saved study guides</div>
-    <h1 className="page-title">A library that<br />sounds like you.</h1>
-    <p className="page-intro">Each note session keeps its approved cards and the exact lines they came from.</p>
+    <div className="eyebrow">YOUR GROWING KNOWLEDGE COLLECTION</div>
+    <h1 className="page-title">Look how much you’ve learned!</h1>
+    <p className="page-intro">Every verified card is another little piece of knowledge worth keeping.</p>
     <div className="library-toolbar">
       <div className="search-wrap">
         <Search size={16} />
@@ -585,10 +602,9 @@ function LibraryPage() {
         })}
       </div> : (
         <div className="review-empty empty-library">
-          <img className="miky-empty" src="/miky-master.png" alt="" aria-hidden="true" />
           <div className="empty-mark"><Library size={21} /></div>
-          <h2>{normalized ? 'No guides found.' : 'Your library is taking shape.'}</h2>
-          <p>{normalized ? 'Try a different word or a broader idea.' : 'Approved cards will gather here, grouped by the note session they came from.'}</p>
+          <h2>{normalized ? 'No guides found.' : 'Your knowledge collection is ready to grow.'}</h2>
+          <p>{normalized ? 'Try a different word or a broader idea.' : 'Nothing here just yet. Let’s start with your first set of notes!'}</p>
           {!normalized && <Link href="/review" className="btn btn-quiet" data-testid="link-library-review">Go to review <BookOpenCheck size={14} /></Link>}
         </div>
       )}

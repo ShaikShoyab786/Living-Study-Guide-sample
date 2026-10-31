@@ -93,7 +93,7 @@ body { min-width: 320px; background: var(--desk); color: var(--ivory); }
 .brand { display: flex; align-items: center; gap: 11px; padding: 3px 8px 38px; color: var(--ivory); text-decoration: none; }
 .brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; color: #182019; background: var(--sage); }
 .brand-title { display: block; font: 600 20px/1.05 var(--app-font-serif); letter-spacing: -.03em; }
-.brand-subtitle { display: block; margin-top: 5px; color: var(--secondary-text); font: 500 9px/1 var(--app-font-mono); letter-spacing: .08em; }
+.brand-subtitle { display: block; margin-top: 5px; color: var(--secondary-text); font: 500 10px/1 var(--app-font-sans); letter-spacing: .01em; }
 .nav-caption,.session-heading { padding: 0 10px 10px; color: var(--secondary-text); font: 500 10px var(--app-font-mono); text-transform: uppercase; letter-spacing: .13em; }
 .nav-list { display: grid; gap: 5px; }
 .nav-link { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; color: var(--secondary-text); text-decoration: none; font-size: 13px; transition: color .18s, background .18s, transform .18s; }
@@ -219,7 +219,6 @@ body { min-width: 320px; background: var(--desk); color: var(--ivory); }
 .error-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 15px; border-radius: 10px; background: color-mix(in srgb,var(--danger) 10%,var(--surface)); color: var(--danger); font-size: 12px; }
 .skeleton { background: linear-gradient(90deg,var(--surface-raised) 25%,color-mix(in srgb,var(--surface-raised) 78%,var(--secondary-text)) 45%,var(--surface-raised) 65%); background-size: 220% 100%; animation: shimmer 1.4s infinite; border-radius: 7px; }
 .miky-welcome { float: right; width: clamp(90px,13vw,145px); height: auto; margin: -17px 3px 5px 20px; object-fit: contain; }
-.miky-empty { position: absolute; width: 110px; height: 110px; object-fit: contain; right: 18px; bottom: 5px; opacity: .9; pointer-events: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes shimmer { to { background-position: -220% 0; } }
 @media (max-width: 900px) { .sidebar { width: 220px; } .workspace-grid { grid-template-columns: 1fr; } .side-stack { grid-template-columns: 1fr 1fr; } }
@@ -260,11 +259,10 @@ body { min-width: 320px; background: var(--desk); color: var(--ivory); }
   .upload-row .btn { width: 100%; }
   .review-controls { align-items: flex-start; flex-direction: column; }
   .miky-welcome { width: 82px; margin: -8px 0 0 9px; }
-  .miky-empty { width: 76px; height: 76px; opacity: .45; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 
-/* Living Study's paper-and-sage desk: light by default, with a genuinely
+/* Study with Miky's paper-and-sage desk: light by default, with a genuinely
    considered night palette for late study sessions. */
 :root {
   color-scheme: light;
@@ -432,8 +430,42 @@ body { min-width: 320px; background: var(--desk); color: var(--ivory); }
 .upload-label { position: relative; }
 .upload-label input { display: block; position: absolute; inset: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .upload-label:focus-within { outline: 2px solid var(--sage); outline-offset: 4px; border-radius: 3px; }
+.welcome-hero { display: flex; align-items: center; justify-content: space-between; gap: clamp(22px,5vw,64px); min-height: 190px; }
+.welcome-copy { flex: 1; min-width: 0; }
+.welcome-copy .page-title { max-width: 720px; font-size: clamp(42px,5.7vw,68px); line-height: 1.02; }
+.welcome-copy .page-intro { max-width: 590px; font-size: 16px; line-height: 1.75; }
+.miky-welcome { float: none; flex: 0 0 auto; width: clamp(150px,19vw,228px); height: auto; margin: 0; object-fit: contain; }
+.sidebar-note { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 13px 14px 15px; font-size: 12px; line-height: 1.55; }
+.sidebar-note strong { margin: 2px 0 5px; font-size: 17px; }
+.sidebar-miky { display: block; width: 88px; height: auto; object-fit: contain; }
+.page-intro { font-size: 15px; line-height: 1.8; }
+.field-label,.summary-row,.recent-note-title,.guide-detail { font-size: 12px; }
+.text-input,.text-area,.search-input { font-size: 14px; }
+.card-field p,.card-field textarea,.card-field input,.library-answer { font-family: var(--app-font-sans); font-size: 14px; line-height: 1.75; }
+.card-field label { font-size: 10px; }
+.library-question { font: 600 clamp(20px,2.3vw,25px)/1.35 var(--app-font-sans); letter-spacing: -.025em; }
+.guide-card-content .library-question { font: 600 clamp(21px,2.7vw,28px)/1.35 var(--app-font-sans); }
+.source-quote { font: 16px/1.8 var(--app-font-sans); }
+.btn { font-size: 13px; }
+.btn-small { font-size: 12px; }
+.btn-discard { color: var(--danger); border-color: color-mix(in srgb,var(--danger) 35%,var(--line)); }
+.btn-discard:hover:not(:disabled) { background: color-mix(in srgb,var(--danger) 9%,var(--surface)); }
+.generation-controls { min-height: 42px; }
+.generation-controls .btn { max-width: 100%; text-align: left; line-height: 1.45; }
+.generation-exhausted { font-size: 13px; }
+.miky-toast { position: fixed; z-index: 80; right: 26px; bottom: 25px; display: flex; align-items: center; gap: 12px; max-width: min(390px,calc(100vw - 32px)); padding: 11px 17px 11px 10px; border: 1px solid color-mix(in srgb,var(--sage) 35%,var(--line)); border-radius: 15px; background: color-mix(in srgb,var(--sage) 14%,var(--surface)); color: var(--ivory); box-shadow: 0 12px 34px rgba(36,65,43,.13); font-size: 13px; font-weight: 700; animation: toast-life 1.3s both; }
+.miky-toast img { width: 45px; height: 45px; flex: 0 0 auto; object-fit: contain; }
+@keyframes toast-life { 0% { opacity: 0; transform: translateY(8px); } 12% { opacity: 1; transform: translateY(0); } 78% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(5px); } }
 @media (max-width: 760px) {
   .guide-card { grid-template-columns: 1fr; }
   .guide-source { border-left: 0; border-top: 1px solid var(--line); }
   .guide-row { grid-template-columns: 38px 1fr 24px; gap: 13px; padding: 18px 15px; }
+}
+@media (max-width: 650px) {
+  .welcome-hero { min-height: 0; align-items: flex-start; gap: 8px; }
+  .welcome-copy .page-title { font-size: clamp(38px,10vw,48px); }
+  .welcome-copy .page-intro { font-size: 14px; line-height: 1.65; }
+  .miky-welcome { width: clamp(84px,25vw,118px); margin-top: 20px; }
+  .sidebar-note { display: none; }
+  .miky-toast { right: 16px; bottom: 16px; font-size: 12px; }
 }

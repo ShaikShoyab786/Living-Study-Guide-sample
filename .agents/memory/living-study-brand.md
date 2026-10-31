@@ -1,10 +1,10 @@
 ---
-name: Living Study brand identity
-description: Official Living Study visual identity and Miky mascot consistency requirements.
+name: Study with Miky brand identity
+description: Official Study with Miky identity, supplied character artwork, and visual consistency requirements.
 ---
 
-Living Study's tagline is “Make knowledge stay.” The official identity uses a premium dark graphite and sage palette, warm ivory text, Fraunces headings, Manrope interface text, and IBM Plex Mono metadata. Miky is one consistent 3D sage-green firefly with a warm ivory glowing abdomen.
+The official product name is “Study with Miky” and its tagline is “Make knowledge stay.” Keep the premium graphite-and-sage palette, warm ivory text, Fraunces headings, Manrope interface text, and restrained IBM Plex Mono metadata. Use the user-approved Miky images exactly as supplied; do not generate alternate character designs.
 
-**Why:** the user supplied an official brand brief and requires the same character identity across the product.
+**Why:** the user supplied an official brand brief, explicitly changed the product name, and provided approved artwork for the workspace and sidebar.
 
-**How to apply:** reuse the existing Miky master asset rather than generating independent poses or alternate character designs; keep future visual work within the stated palette and type system.
+**How to apply:** use the Welcome Miky artwork in the workspace and Sidebar Miky artwork for encouragement and verification feedback. Preserve their colors, proportions, and complete characters while keeping future UI within the established palette and typography.
