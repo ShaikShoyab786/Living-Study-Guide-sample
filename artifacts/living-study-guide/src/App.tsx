@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } from 'wouter';
 import type { ReactNode } from 'react';
-import welcomeMiky from '@assets/welcome.miky_1793431828259.png';
+import welcomeMiky from '@assets/Cheerful_Firefly_Reading_a_Book_1793447095602.png';
 import sidebarMiky from '@assets/miky-sidebar_1793431828258.png';
 import {
   AlertDialog,
@@ -393,7 +393,12 @@ function HomePage() {
         <h1 className="page-title">Let’s make learning stick!</h1>
         <p className="page-intro">Bring your notes, and I’ll help turn them into questions and knowledge worth keeping.</p>
       </div>
-      <img className="miky-welcome" src={welcomeMiky} alt="Miky, your learning companion" />
+      <div className="welcome-stage">
+        <span className="welcome-spark welcome-spark-one" aria-hidden="true" />
+        <span className="welcome-spark welcome-spark-two" aria-hidden="true" />
+        <span className="welcome-spark welcome-spark-three" aria-hidden="true" />
+        <img className="miky-welcome" src={welcomeMiky} alt="Miky, your learning companion" />
+      </div>
     </div>
 
     <div className="workspace-grid">
