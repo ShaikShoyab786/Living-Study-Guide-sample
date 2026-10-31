@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: study
+    description: Notes, generated study cards, reviews, and verified library
 paths:
   /healthz:
     get:
@@ -24,6 +26,135 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /notes:
+    get:
+      operationId: listNotes
+      tags: [study]
+      summary: List study notes
+      responses:
+        "200":
+          description: Notes ordered by most recently updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Note"
+    post:
+      operationId: createNote
+      tags: [study]
+      summary: Save lecture notes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoteInput"
+      responses:
+        "201":
+          description: Saved note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+  /notes/{noteId}/cards:
+    get:
+      operationId: listNoteCards
+      tags: [study]
+      summary: List generated cards for a note
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cards generated from the note
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeneratedCard"
+  /notes/{noteId}/extract:
+    post:
+      operationId: extractStudyPack
+      tags: [study]
+      summary: Extract source-linked study cards from a note
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated cards and extraction mode
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionResult"
+        "404":
+          description: Note not found
+  /cards/{cardId}/review:
+    patch:
+      operationId: reviewCard
+      tags: [study]
+      summary: Approve, edit and approve, or discard a generated card
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardReviewInput"
+      responses:
+        "200":
+          description: Reviewed card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedCard"
+        "404":
+          description: Card not found
+  /library:
+    get:
+      operationId: searchLibrary
+      tags: [study]
+      summary: Search approved study cards
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching approved cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LibraryCard"
+  /study/summary:
+    get:
+      operationId: getStudySummary
+      tags: [study]
+      summary: Get workspace study totals
+      responses:
+        "200":
+          description: Workspace totals for notes, review, and library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudySummary"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +164,103 @@ components:
           type: string
       required:
         - status
+    Note:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        rawText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, title, rawText, createdAt]
+    NoteInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 180
+        rawText:
+          type: string
+          minLength: 1
+      required: [title, rawText]
+    GeneratedCard:
+      type: object
+      properties:
+        id:
+          type: string
+        noteId:
+          type: string
+        sourceExcerpt:
+          type: string
+        concept:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, noteId, sourceExcerpt, concept, question, answer, status, createdAt]
+    LibraryCard:
+      type: object
+      properties:
+        id:
+          type: string
+        cardId:
+          type: string
+        concept:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+        editedByUser:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, cardId, concept, question, answer, editedByUser, createdAt]
+    CardReviewInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [approve, edit_approve, discard]
+        concept:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+      required: [action]
+    ExtractionResult:
+      type: object
+      properties:
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedCard"
+        mode:
+          type: string
+          enum: [ai, demo]
+      required: [cards, mode]
+    StudySummary:
+      type: object
+      properties:
+        notes:
+          type: integer
+        pending:
+          type: integer
+        approved:
+          type: integer
+      required: [notes, pending, approved]
 
