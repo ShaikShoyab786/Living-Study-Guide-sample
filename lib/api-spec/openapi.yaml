@@ -57,6 +57,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Note"
+  /notes/pdf-study-pack:
+    post:
+      operationId: createPdfStudyPack
+      tags: [study]
+      summary: Extract PDF lecture text and create a study pack
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PdfStudyPackInput"
+      responses:
+        "201":
+          description: Saved note and generated cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfStudyPack"
+        "400":
+          description: Invalid or unreadable PDF
+        "413":
+          description: PDF exceeds the upload or page limit
   /notes/{noteId}/cards:
     get:
       operationId: listNoteCards
@@ -188,6 +210,17 @@ components:
           type: string
           minLength: 1
       required: [title, rawText]
+    PdfStudyPackInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 180
+        file:
+          type: string
+          format: binary
+      required: [title, file]
     GeneratedCard:
       type: object
       properties:
@@ -253,6 +286,19 @@ components:
           type: string
           enum: [ai, demo]
       required: [cards, mode]
+    PdfStudyPack:
+      type: object
+      properties:
+        note:
+          $ref: "#/components/schemas/Note"
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedCard"
+        mode:
+          type: string
+          enum: [ai, demo]
+      required: [note, cards, mode]
     StudySummary:
       type: object
       properties:

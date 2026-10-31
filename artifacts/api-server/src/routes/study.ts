@@ -1,6 +1,8 @@
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type RequestHandler } from "express";
+import multer from "multer";
 import {
+  CreatePdfStudyPackResponse,
   CreateNoteBody,
   CreateNoteResponse,
   ExtractStudyPackParams,
@@ -22,8 +24,32 @@ import {
   notesTable,
 } from "@workspace/db";
 import { extractCards } from "../lib/study-extraction";
+import { extractPdfText, PdfExtractionError } from "../lib/pdf-extraction";
 
 const router: IRouter = Router();
+const maxPdfUploadBytes = 15 * 1024 * 1024;
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxPdfUploadBytes, files: 1, fields: 1 },
+}).single("file");
+const parsePdfUpload: RequestHandler = (req, res, next) => {
+  pdfUpload(req, res, (error) => {
+    if (error instanceof multer.MulterError) {
+      const isTooLarge = error.code === "LIMIT_FILE_SIZE";
+      res.status(isTooLarge ? 413 : 400).json({
+        error: isTooLarge
+          ? "PDFs must be 15 MB or smaller."
+          : "Upload one PDF file at a time.",
+      });
+      return;
+    }
+    if (error) {
+      res.status(400).json({ error: "The PDF upload could not be read." });
+      return;
+    }
+    next();
+  });
+};
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -44,6 +70,82 @@ router.post("/notes", async (req, res): Promise<void> => {
   const [note] = await db.insert(notesTable).values(parsed.data).returning();
   res.status(201).json(CreateNoteResponse.parse(note));
 });
+
+router.post(
+  "/notes/pdf-study-pack",
+  parsePdfUpload,
+  async (req, res): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ error: "Choose a PDF file to upload." });
+      return;
+    }
+
+    const title = CreateNoteBody.shape.title.safeParse(req.body.title);
+    if (!title.success) {
+      req.file.buffer.fill(0);
+      res.status(400).json({ error: "Add a valid title for this note." });
+      return;
+    }
+    if (!req.file.originalname.toLowerCase().endsWith(".pdf")) {
+      req.file.buffer.fill(0);
+      res.status(400).json({ error: "Choose a file with a .pdf extension." });
+      return;
+    }
+
+    try {
+      const { text } = await extractPdfText(req.file.buffer);
+      const extraction = await extractCards(text);
+      if (extraction.mode === "demo") {
+        req.log.warn(
+          { title: title.data },
+          "Using transparent demo card extraction for uploaded PDF",
+        );
+      }
+
+      const saved = await db.transaction(async (tx) => {
+        const [note] = await tx
+          .insert(notesTable)
+          .values({ title: title.data.trim(), rawText: text })
+          .returning();
+        const cards =
+          extraction.cards.length > 0
+            ? await tx
+                .insert(generatedCardsTable)
+                .values(
+                  extraction.cards.map((card) => ({
+                    noteId: note.id,
+                    sourceExcerpt: card.sourceExcerpt,
+                    concept: card.concept,
+                    question: card.question,
+                    answer: card.answer,
+                    status: "pending" as const,
+                  })),
+                )
+                .returning()
+            : [];
+        return { note, cards };
+      });
+
+      res
+        .status(201)
+        .json(
+          CreatePdfStudyPackResponse.parse({
+            ...saved,
+            mode: extraction.mode,
+          }),
+        );
+    } catch (error) {
+      if (error instanceof PdfExtractionError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      req.log.error({ err: error }, "Failed to create a study pack from PDF");
+      res.status(500).json({ error: "The study pack could not be created." });
+    } finally {
+      req.file.buffer.fill(0);
+    }
+  },
+);
 
 router.get("/notes/:noteId/cards", async (req, res): Promise<void> => {
   const params = ListNoteCardsParams.safeParse(req.params);

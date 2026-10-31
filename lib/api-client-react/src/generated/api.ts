@@ -27,6 +27,8 @@ import type {
   LibraryCard,
   Note,
   NoteInput,
+  PdfStudyPack,
+  PdfStudyPackInput,
   SearchLibraryParams,
   StudySummary
 } from './api.schemas';
@@ -299,6 +301,83 @@ export const useCreateNote = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateNoteMutationOptions(options));
+    }
+
+export const getCreatePdfStudyPackUrl = () => {
+
+
+
+
+  return `/api/notes/pdf-study-pack`
+}
+
+/**
+ * @summary Extract PDF lecture text and create a study pack
+ */
+export const createPdfStudyPack = async (pdfStudyPackInput: PdfStudyPackInput, options?: Parameters<typeof customFetch>[1]): Promise<PdfStudyPack> => {
+    const formData = new FormData();
+formData.append(`title`, pdfStudyPackInput.title);
+formData.append(`file`, pdfStudyPackInput.file);
+
+  return customFetch<PdfStudyPack>(getCreatePdfStudyPackUrl(),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getCreatePdfStudyPackMutationKey = () => ['createPdfStudyPack'] as const;
+
+export const getCreatePdfStudyPackMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPdfStudyPack>>, TError,CreatePdfStudyPackMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPdfStudyPack>>, TError,CreatePdfStudyPackMutationVariables, TContext> => {
+
+const mutationKey = getCreatePdfStudyPackMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPdfStudyPack>>, CreatePdfStudyPackMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPdfStudyPack(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePdfStudyPackMutationResult = NonNullable<Awaited<ReturnType<typeof createPdfStudyPack>>>
+    export type CreatePdfStudyPackMutationBody = BodyType<PdfStudyPackInput>
+    export type CreatePdfStudyPackMutationError = ErrorType<void>
+    export type CreatePdfStudyPackMutationVariables = {data: BodyType<PdfStudyPackInput>}
+
+    /**
+ * @summary Extract PDF lecture text and create a study pack
+ */
+export const useCreatePdfStudyPack = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPdfStudyPack>>, TError,CreatePdfStudyPackMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPdfStudyPack>>,
+        TError,
+        CreatePdfStudyPackMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePdfStudyPackMutationOptions(options));
     }
 
 export const getListNoteCardsUrl = (noteId: string,) => {

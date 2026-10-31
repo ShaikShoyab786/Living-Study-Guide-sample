@@ -26,6 +26,15 @@ export interface NoteInput {
   rawText: string;
 }
 
+export interface PdfStudyPackInput {
+  /**
+     * @minLength 1
+     * @maxLength 180
+     */
+  title: string;
+  file: Blob | File;
+}
+
 export type GeneratedCardStatus = typeof GeneratedCardStatus[keyof typeof GeneratedCardStatus];
 
 
@@ -83,6 +92,20 @@ export const ExtractionResultMode = {
 export interface ExtractionResult {
   cards: GeneratedCard[];
   mode: ExtractionResultMode;
+}
+
+export type PdfStudyPackMode = typeof PdfStudyPackMode[keyof typeof PdfStudyPackMode];
+
+
+export const PdfStudyPackMode = {
+  ai: 'ai',
+  demo: 'demo',
+} as const;
+
+export interface PdfStudyPack {
+  note: Note;
+  cards: GeneratedCard[];
+  mode: PdfStudyPackMode;
 }
 
 export interface StudySummary {

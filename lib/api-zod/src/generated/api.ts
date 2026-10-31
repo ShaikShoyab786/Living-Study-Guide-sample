@@ -51,6 +51,39 @@ export const CreateNoteResponse = zod.object({
 
 
 /**
+ * @summary Extract PDF lecture text and create a study pack
+ */
+export const createPdfStudyPackBodyTitleMax = 180;
+
+
+
+export const CreatePdfStudyPackBody = zod.object({
+  "title": zod.string().min(1).max(createPdfStudyPackBodyTitleMax),
+  "file": zod.instanceof(Blob)
+})
+
+export const CreatePdfStudyPackResponse = zod.object({
+  "note": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "rawText": zod.string(),
+  "createdAt": zod.coerce.date()
+}),
+  "cards": zod.array(zod.object({
+  "id": zod.string(),
+  "noteId": zod.string(),
+  "sourceExcerpt": zod.string(),
+  "concept": zod.string(),
+  "question": zod.string(),
+  "answer": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'rejected']),
+  "createdAt": zod.coerce.date()
+})),
+  "mode": zod.enum(['ai', 'demo'])
+})
+
+
+/**
  * @summary List generated cards for a note
  */
 export const ListNoteCardsParams = zod.object({

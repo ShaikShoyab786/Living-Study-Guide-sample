@@ -16,5 +16,8 @@ export * from './healthStatus';
 export * from './libraryCard';
 export * from './note';
 export * from './noteInput';
+export * from './pdfStudyPack';
+export * from './pdfStudyPackInput';
+export * from './pdfStudyPackMode';
 export * from './searchLibraryParams';
 export * from './studySummary';

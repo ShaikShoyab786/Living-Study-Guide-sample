@@ -1,0 +1,1 @@
+- [PDF.js on Node](pdfjs-node-text-extraction.md) — optional canvas/polyfill warnings do not prevent text extraction; avoid native canvas unless rendering is needed.
