@@ -57,6 +57,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Note"
+  /notes/{noteId}:
+    delete:
+      operationId: deleteNote
+      tags: [study]
+      summary: Delete one study note and its associated cards
+      parameters:
+        - name: noteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Note and associated study cards deleted
+        "400":
+          description: Invalid note ID
+        "404":
+          description: Note not found
   /notes/pdf-study-pack:
     post:
       operationId: createPdfStudyPack

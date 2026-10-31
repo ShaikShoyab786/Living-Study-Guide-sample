@@ -77,6 +77,26 @@ router.post("/notes", async (req, res): Promise<void> => {
   res.status(201).json(CreateNoteResponse.parse(note));
 });
 
+router.delete("/notes/:noteId", async (req, res): Promise<void> => {
+  const noteId = req.params.noteId;
+  if (!uuidPattern.test(noteId)) {
+    res.status(400).json({ error: "Invalid note ID" });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(notesTable)
+    .where(eq(notesTable.id, noteId))
+    .returning({ id: notesTable.id });
+  if (!deleted) {
+    res.status(404).json({ error: "Note not found" });
+    return;
+  }
+
+  // The database foreign keys cascade to generated cards and verified cards.
+  res.status(204).end();
+});
+
 router.post(
   "/notes/pdf-text",
   parsePdfUpload,

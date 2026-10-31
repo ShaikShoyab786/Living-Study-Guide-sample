@@ -51,6 +51,16 @@ export const CreateNoteResponse = zod.object({
 
 
 /**
+ * @summary Delete one study note and its associated cards
+ */
+export const DeleteNoteParams = zod.object({
+  "noteId": zod.coerce.string().uuid()
+})
+
+export const DeleteNoteResponse = zod.void()
+
+
+/**
  * @summary Extract PDF lecture text and create a study pack
  */
 export const createPdfStudyPackBodyTitleMax = 180;

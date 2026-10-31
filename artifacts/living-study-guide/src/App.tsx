@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   useCreateNote,
+  useDeleteNote,
   useExtractPdfText,
   useExtractStudyPack,
   useFetchVerifiedGuide,
@@ -40,6 +41,7 @@ import {
   Sun,
   Moon,
   Pencil,
+  Trash2,
   Upload,
   X,
 } from 'lucide-react';
@@ -47,6 +49,16 @@ import { Link, Route, Switch, useLocation, useParams, Router as WouterRouter } f
 import type { ReactNode } from 'react';
 import welcomeMiky from '@assets/welcome.miky_1793431828259.png';
 import sidebarMiky from '@assets/miky-sidebar_1793431828258.png';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 20_000, retry: 1, refetchOnWindowFocus: false } },
@@ -96,10 +108,15 @@ function getPdfErrorMessage(error: unknown): string | undefined {
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const summary = useGetStudySummary();
   const health = useHealthCheck();
   const notesQuery = useListNotes();
+  const deleteNote = useDeleteNote();
   const notes = (notesQuery.data ?? []) as NoteRecord[];
+  const [notePendingDelete, setNotePendingDelete] = useState<NoteRecord | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const selectedNote = location.startsWith('/review/') ? decodeURIComponent(location.slice('/review/'.length)) : '';
   const isGuideSelected = location.startsWith('/library/') ? decodeURIComponent(location.slice('/library/'.length)) : '';
   const [theme, setTheme] = useState<'light' | 'dark'>(() => document.documentElement.classList.contains('dark') ? 'dark' : 'light');
@@ -118,6 +135,29 @@ function Shell({ children }: { children: ReactNode }) {
     localStorage.setItem('living-study-theme', next);
     return next;
   });
+  const confirmDelete = async () => {
+    if (!notePendingDelete || deleteNote.isPending) return;
+    const noteId = notePendingDelete.id;
+    try {
+      await deleteNote.mutateAsync({ noteId });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListNotesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getGetStudySummaryQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getListNoteCardsQueryKey(noteId) }),
+        queryClient.invalidateQueries({ queryKey: getListVerifiedGuidesQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getFetchVerifiedGuideQueryKey(noteId) }),
+        queryClient.invalidateQueries({ queryKey: getSearchLibraryQueryKey() }),
+      ]);
+      const currentPath = decodeURIComponent(location);
+      if (currentPath === `/library/${noteId}` || currentPath === `/review/${noteId}`) {
+        setLocation('/');
+      }
+      setNotePendingDelete(null);
+      setDeleteError('');
+    } catch (error) {
+      setDeleteError(getPdfErrorMessage(error) ?? 'This study session could not be deleted. Please try again.');
+    }
+  };
   const pending = summary.data?.pending ?? 0;
   return (
     <div className="app-shell">
@@ -142,24 +182,40 @@ function Shell({ children }: { children: ReactNode }) {
             <Library size={17} /> Verified Library
           </Link>
         </nav>
-        <div className="session-heading">Note sessions</div>
-        <nav className="session-list" aria-label="Note sessions">
-          {notesQuery.isLoading ? <span className="session-placeholder">Loading sessions…</span> :
-            notesQuery.isError ? <span className="session-placeholder">Sessions unavailable</span> :
-            notes.length === 0 ? <span className="session-placeholder">Your saved notes appear here.</span> :
-            notes.map((note) => (
-              <Link
-                href={`/library/${encodeURIComponent(note.id)}`}
-                className={`session-link ${isGuideSelected === note.id ? 'selected' : ''}`}
-                key={note.id}
-                title={note.title}
-                data-testid={`link-session-${note.id}`}
-              >
-                <FileText size={14} />
-                <span>{note.title}</span>
-              </Link>
-            ))}
-        </nav>
+        <section className="sessions-section" aria-label="Saved note sessions">
+          <div className="session-heading">Note sessions</div>
+          <nav className="session-list" aria-label="Note sessions">
+            {notesQuery.isLoading ? <span className="session-placeholder">Loading sessions…</span> :
+              notesQuery.isError ? <span className="session-placeholder">Sessions unavailable</span> :
+              notes.length === 0 ? <span className="session-placeholder">Your saved notes appear here.</span> :
+              notes.map((note) => (
+                <div className="session-item" key={note.id}>
+                  <Link
+                    href={`/library/${encodeURIComponent(note.id)}`}
+                    className={`session-link ${isGuideSelected === note.id || selectedNote === note.id ? 'selected' : ''}`}
+                    title={note.title}
+                    data-testid={`link-session-${note.id}`}
+                  >
+                    <FileText size={14} />
+                    <span>{note.title}</span>
+                  </Link>
+                  <button
+                    className="session-delete"
+                    type="button"
+                    aria-label={`Delete session: ${note.title}`}
+                    title={`Delete ${note.title}`}
+                    data-testid={`button-delete-session-${note.id}`}
+                    onClick={() => {
+                      setDeleteError('');
+                      setNotePendingDelete(note);
+                    }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+          </nav>
+        </section>
         <div className="sidebar-bottom">
           <div className="sidebar-note">
             <img src={sidebarMiky} alt="" aria-hidden="true" className="sidebar-miky" />
@@ -187,6 +243,38 @@ function Shell({ children }: { children: ReactNode }) {
         </header>
         {children}
       </main>
+      <AlertDialog
+        open={Boolean(notePendingDelete)}
+        onOpenChange={(open) => {
+          if (!open && !deleteNote.isPending) {
+            setNotePendingDelete(null);
+            setDeleteError('');
+          }
+        }}
+      >
+        <AlertDialogContent className="delete-session-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this study session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {notePendingDelete?.title}? Its associated study materials may also be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p className="delete-session-error" role="alert">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteNote.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="delete-session-confirm"
+              disabled={deleteNote.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              {deleteNote.isPending ? 'Deleting…' : 'Delete session'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
