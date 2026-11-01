@@ -127,6 +127,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Note"
+        "413":
+          description: Note text exceeds the character limit
   /notes/{noteId}:
     delete:
       operationId: deleteNote
@@ -167,7 +169,7 @@ paths:
         "400":
           description: Invalid or unreadable PDF
         "413":
-          description: PDF exceeds the upload or page limit
+          description: PDF exceeds the upload, page, or extracted-text limit
   /notes/pdf-text:
     post:
       operationId: extractPdfText
@@ -189,7 +191,7 @@ paths:
         "400":
           description: Invalid, unreadable, or password-protected PDF
         "413":
-          description: PDF exceeds the upload or page limit
+          description: PDF exceeds the upload, page, or extracted-text limit
         "422":
           description: PDF contains no selectable text
   /notes/{noteId}/cards:
@@ -232,6 +234,8 @@ paths:
                 $ref: "#/components/schemas/AdditionalCardsResult"
         "404":
           description: Note not found
+        "413":
+          description: Note or additional-question context exceeds the generation limit
         "503":
           description: Additional questions could not be generated
   /notes/{noteId}/extract:
@@ -254,6 +258,8 @@ paths:
                 $ref: "#/components/schemas/ExtractionResult"
         "404":
           description: Note not found
+        "413":
+          description: Note text exceeds the generation limit
   /cards/{cardId}/review:
     patch:
       operationId: reviewCard
@@ -378,6 +384,7 @@ components:
         rawText:
           type: string
           minLength: 1
+          maxLength: 100000
       required: [title, rawText]
     PdfStudyPackInput:
       type: object
@@ -402,6 +409,7 @@ components:
       properties:
         text:
           type: string
+          maxLength: 100000
         pageCount:
           type: integer
       required: [text, pageCount]

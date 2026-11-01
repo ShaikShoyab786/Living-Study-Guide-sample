@@ -12,6 +12,9 @@ export interface NoteInput {
      * @maxLength 180
      */
   title: string;
-  /** @minLength 1 */
+  /**
+     * @minLength 1
+     * @maxLength 100000
+     */
   rawText: string;
 }

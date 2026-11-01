@@ -120,12 +120,13 @@ export const ListNotesResponse = zod.array(ListNotesResponseItem)
  */
 export const createNoteBodyTitleMax = 180;
 
+export const createNoteBodyRawTextMax = 100000;
 
 
 
 export const CreateNoteBody = zod.object({
   "title": zod.string().min(1).max(createNoteBodyTitleMax),
-  "rawText": zod.string().min(1)
+  "rawText": zod.string().min(1).max(createNoteBodyRawTextMax)
 })
 
 export const CreateNoteResponse = zod.object({
@@ -186,8 +187,12 @@ export const ExtractPdfTextBody = zod.object({
   "file": zod.instanceof(Blob)
 })
 
+export const extractPdfTextResponseTextMax = 100000;
+
+
+
 export const ExtractPdfTextResponse = zod.object({
-  "text": zod.string(),
+  "text": zod.string().max(extractPdfTextResponseTextMax),
   "pageCount": zod.number().int()
 })
 

@@ -4,10 +4,10 @@ Audit basis: current Replit workspace source on 2026-11-01. Source of truth was 
 
 ## Scope and limits
 
-- Git branch `main` was clean before this documentation change at `013a176`, matching `origin/main`. No application changes were uncommitted in this checkout. The latest auth and guest-session implementation visible here is committed in that revision.
+- The three remediations below are present in the current working tree. No database migrations, data deletion, commit, or push were performed.
 - Reviewed API routing, auth and owner middleware, PDF handling, AI generation, database schema, frontend auth entry points, workspace environment-variable references, package lockfile, and `.gitignore`.
 - Ran the dependency audit, SAST, and HoundDog scans. The dependency audit reported 0 critical, 7 high, 8 moderate, and 2 low findings. SAST returned 0 findings; HoundDog returned 0 findings.
-- No live database contents, Replit secret values, Clerk provider settings, or production deployment settings were accessed. No migration, UI/code fix, commit, or push was performed. No exploit payloads were run.
+- No live database contents, Replit secret values, Clerk provider settings, or production deployment settings were accessed. No exploit payloads were run.
 - Scanner output is a dependency/advisory signal, not proof that each affected code path is reachable in this deployment. Reachability notes below are based on this source review.
 
 ## Implemented controls verified in source
@@ -17,18 +17,21 @@ Audit basis: current Replit workspace source on 2026-11-01. Source of truth was 
 - Guest IDs are database-generated UUIDs in signed, HTTP-only cookies. Cookies are `SameSite=Lax`, `Secure` in production, and have a 60-day max-age.
 - Guest transfer requires an explicit confirmation and runs in a transaction with a lock on the guest row. Notes are moved only from that guest identity.
 - User input and path/query parameters are validated with generated Zod schemas and UUID checks. Database access uses Drizzle query builders and parameterized expressions; no raw user-built SQL was found.
-- PDF upload uses in-memory Multer storage, limits to one 15 MiB file and one form field, checks the filename extension and a PDF signature, and uses `pdfjs-dist`. Extraction is capped at 250 pages, and the upload buffer is zeroed in `finally` blocks.
+- JSON and URL-encoded request bodies have explicit 1 MiB and 64 KiB parser limits. Note text and extracted PDF text are capped at 100,000 characters; PDF upload remains limited to 15 MiB and 250 pages.
+- PDF upload uses in-memory Multer storage, accepts one file and one form field, checks the filename extension and a PDF signature, and uses `pdfjs-dist`. The upload buffer is zeroed in `finally` blocks.
 - AI output is parsed as JSON; cards with empty required fields, non-exact source excerpts, or approximate duplicate questions are filtered. Users must review generated cards before they enter the verified library.
+- Credentialed CORS permits same-origin requests and origins explicitly listed in `STUDY_TRUSTED_ORIGINS`. API mutations require a matching Origin or Referer and the `X-Study-CSRF: 1` header; the generated browser client adds that header.
+- Additional-card generation caps its serialized AI context at 120,000 characters and limits the existing-card context to 100 cards. Oversized legacy notes are rejected for generation rather than truncated or deleted.
 - Pino redacts authorization, cookie, and set-cookie headers. Request log serialization omits query strings.
 - PostgreSQL foreign keys cascade from notes to generated cards and from generated cards to library cards. A unique index prevents multiple library rows for one generated card.
 
-## Confirmed vulnerabilities and missing controls
+## Three audited findings and remediation status
 
 ### High priority
 
-1. **Reachable high-severity body-parser advisory (confirmed exposure).** The lockfile resolves `body-parser` 2.3.0; the dependency audit reports GHSA-27r3-jxmh-p828, fixed in 2.4.0. The API runs `express.json()` before routing and does not disable compressed request bodies. This puts the affected parser on the unauthenticated request path, including before the study-owner guard. The advisory describes a process-availability failure for certain malformed compressed bodies. No proof-of-concept was run.
-2. **CORS reflects arbitrary origins with credentials (confirmed configuration; CSRF impact depends on browser/site context).** `cors({ credentials: true, origin: true })` reflects the incoming origin. No allow-list or origin check is present. There is no CSRF token or explicit Origin/Referer validation for cookie-authenticated mutations. `SameSite=Lax` helps against cross-site requests, but is not a substitute for a narrow origin policy, especially for same-site sibling origins. Affected writes include guest onboarding/transfer and study note/card operations.
-3. **No maximum note-text or extracted-text size at the application schema (confirmed missing validation).** `CreateNoteBody.rawText` has a minimum length but no maximum. PDF input has file and page limits, but no cap on extracted characters or AI input tokens. The JSON parser's default body limit is the only observed bound for JSON note input; the PDF route can produce text outside that JSON-parser limit. This creates avoidable memory, latency, and AI-cost exposure.
+1. **body-parser GHSA-27r3-jxmh-p828 — addressed in the lockfile.** The audited Express 5.3.0 release is still the latest Express 5 release and depends on `body-parser@^2.3.0`; its compatible range now resolves to patched `body-parser` 2.4.0 through a targeted workspace override. The parser remains bounded by explicit request-size limits.
+2. **Reflected credentialed CORS and missing CSRF/Origin validation — addressed in the API.** CORS no longer reflects arbitrary origins. Mutations require the request origin to match the effective app origin (including the forwarded Replit host) or an exact configured `STUDY_TRUSTED_ORIGINS` entry, plus the required custom header. No extra origin is enabled by default.
+3. **Unbounded note/PDF/AI input — addressed with application caps.** Notes and extracted PDF text are limited to 100,000 characters; JSON and URL-encoded bodies are limited to 1 MiB and 64 KiB. Additional-card generation rejects more than 100 existing cards or a serialized context over 120,000 characters. Older oversized notes remain intact and readable but receive a clear 413 response when generation is requested.
 
 ### Dependency scanner advisories
 
@@ -44,8 +47,8 @@ The scan also reported 8 moderate findings: `fast-uri` 3.1.8 (2), `postcss-selec
 - **PDF extraction is not rate limited.** The two AI-generation routes are limited per owner to 10 requests/hour for guests and 40/hour for signed-in users. The limiter is in-process memory, so limits reset on restart and are not shared across replicas. `/notes/pdf-text` is not behind that limiter. Upload size/page caps help but do not bound concurrent PDF parsing or parser time.
 - **Guest expiry is not enforced by the server.** The guest cookie expires in the browser after 60 days, but the database stores no expiry and middleware only checks that the row is active/not transferred. There is no cleanup job or retention policy.
 - **`.env` files are not excluded by the repository `.gitignore`.** No `.env` or `.env.example` file was found in the workspace or Git index during the audit. The repo ignores `.local` and build files but has no `.env*` rule. Replit Secrets are referenced by environment-variable name in code; actual secret values were not accessed.
-- **No checked-in test suite or migration history was found.** No automated test files or SQL migration files were found in the inspected application/library source. The DB package exposes Drizzle `push` scripts. This audit did not run a migration or inspect live schema drift.
-- **No explicit API security headers or centralized JSON error middleware were found in the Express app.** Express 5 provides its default error handling; deployment-edge headers were not checked. Add consistent production error handling and security headers as hardening.
+- **Focused security tests now cover origin and CSRF behavior.** Broader authenticated route tests and SQL migration files were not found in the inspected application/library source. The DB package exposes Drizzle `push` scripts. No migration was run or live schema drift inspected.
+- **General API error handling and security headers remain follow-up work.** The new request-body-size handler returns JSON for oversized parser requests, but there is not yet a general sanitized JSON error handler. Deployment-edge headers were not checked.
 - **Owner and foreign-key columns lack explicit query indexes in the Drizzle schema.** Current table indexes are the primary keys, a partial unique Google-provider index, and a unique library-card index. Owner-scoped queries and joins may slow as data grows.
 - **Guest and account data retention is undefined in code.** Notes contain full raw source text and are sent to the configured AI integration for generation. Provider-side data retention is not established by repository code.
 
@@ -53,9 +56,9 @@ The scan also reported 8 moderate findings: `fast-uri` 3.1.8 (2), `postcss-selec
 
 | Priority | Finding / affected code | Recommended fix | Migration / feature impact | Required verification |
 | --- | --- | --- | --- | --- |
-| P0 | `body-parser` 2.3.0 behind `express.json()`; unauthenticated parser path | Upgrade the compatible Express/body-parser dependency chain to a fixed release (scanner says 2.4.0), or explicitly disable request inflation if compressed bodies are not required. Do not bypass package controls. | Usually no database migration; verify Express compatibility and request behavior. | Dependency audit; regression tests for normal JSON and compressed requests; confirm API process remains healthy on parser errors. |
-| P1 | Reflected credentialed CORS and no CSRF/Origin validation (`app.ts`, cookie-authenticated POST/PATCH/DELETE routes) | Allow only the actual app origins; reject unexpected origins on state-changing cookie-authenticated requests and add a CSRF strategy appropriate for Clerk and guest cookies. | No DB migration. May affect custom domains and development previews; preserve an explicit development-origin workflow. | Cross-origin browser tests for allowed and rejected origins; confirm guest and Clerk flows still work. |
-| P1 | Unbounded note/PDF text and AI input (`CreateNoteBody`, PDF endpoints, generation functions) | Set documented maximum text characters, PDF extracted characters, per-request AI token budget, and output field/card limits; reject before storing or calling AI. Add per-owner and global spend/abuse controls. | No schema migration unless limits are stored/configurable. Large existing notes may need a clear error rather than automatic truncation. | Boundary tests for JSON, PDF, AI input, and generated response size; verify no partial note/card writes. |
+| Resolved | `body-parser` 2.3.0 behind `express.json()` | Workspace override resolves the compatible Express dependency to patched 2.4.0; JSON parsing is explicitly bounded. | No migration. | Confirm the lockfile resolves 2.4.0; verify normal JSON and oversized-body handling. |
+| Resolved | Reflected credentialed CORS and missing CSRF/Origin validation | Exact same-origin checks, optional exact-origin allow-list, and a required request header on mutations. | No migration. Cross-origin frontends must be listed in `STUDY_TRUSTED_ORIGINS`. | Origin/CSRF tests and same-origin app smoke test. |
+| Partially resolved | Unbounded note/PDF/AI input | Note and extracted-text caps, parser limits, and additional-generation context bounds are in place. Output card/field limits and global AI spend controls remain separate follow-up work. | No migration. Existing long notes are not altered. | Boundary tests for JSON, PDF, AI context, and no partial writes. |
 | P1 | Unrate-limited PDF extraction and in-memory owner rate limits (`study.ts`) | Rate-limit both PDF endpoints and use a shared limiter store or platform edge controls; bound parse concurrency/time and monitor rejected requests. | No database migration; shared rate-limit storage may require infrastructure/configuration. | Multiple-instance/restart tests, guest/user quota tests, oversized and expensive PDF tests. |
 | P1 | Guest records have no server-side expiry/cleanup (`study_guest_sessions`) | Add an explicit expiry or inactivity policy enforced in owner middleware, plus scheduled cleanup and a retention policy. Keep the cookie and server TTL consistent. | Requires a schema migration and data-retention decision; existing guest rows need a backfill/grace policy to avoid unexpectedly losing access. | Cookie expiration, stale-cookie rejection, cleanup safety, and transfer tests. |
 | P1 | `.env` ignore gap (`.gitignore`) | Ignore `.env` and local variants while explicitly allowing `.env.example`; keep examples placeholder-only. Review Git history before any secret cleanup if a secret is ever committed. | No runtime migration. Avoid deleting or rewriting existing user files without review. | `git check-ignore` tests and secret scanning; ensure `.env.example` remains trackable. |
@@ -66,11 +69,11 @@ The scan also reported 8 moderate findings: `fast-uri` 3.1.8 (2), `postcss-selec
 
 ## Recommended order
 
-1. Address the reachable body-parser advisory and verify request parsing.
-2. Restrict CORS and add a cookie-compatible CSRF/Origin policy.
-3. Bound JSON/PDF text, parser concurrency, AI tokens, and multi-instance rate limits.
+1. Re-run the dependency audit to confirm the body-parser finding is cleared; triage the remaining package advisories.
+2. Exercise signed-in and guest browser flows with the new origin/CSRF checks.
+3. Consider output card/field limits, PDF parse concurrency, provider timeouts, and shared/global AI abuse controls.
 4. Decide and implement guest expiry, retention, and account-deletion behavior.
-5. Triage and update the remaining scanner findings, then add security-focused route and migration tests.
-6. Add measured indexes and centralized error/header hardening.
+5. Add broader authenticated route tests and migration coverage.
+6. Add measured indexes and general error/header hardening.
 
-No fixes or migrations were applied during this audit.
+No database changes or migrations were applied. The three remediations are code and dependency changes in the current working tree only.

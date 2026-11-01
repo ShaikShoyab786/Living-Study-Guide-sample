@@ -15,11 +15,11 @@ The API imports an OpenAI-compatible client from the Replit AI integration packa
 5. The server JSON-parses the response and checks field types. It retains nonblank cards only when the excerpt is an exact contiguous substring of the note, then filters approximate duplicate questions using normalized text and Jaccard-style word overlap.
 6. Retained cards are inserted as `pending` and returned to the Review Hub.
 
-There is no application-level cap on source-text characters, AI input tokens, card count, or returned field lengths in the inspected generation code. The ordinary JSON parser imposes its default request-body limit on JSON note creation; the PDF route can extract text independently of that parser limit.
+The API accepts notes and extracted PDF text up to 100,000 JavaScript string characters. JSON bodies are limited to 1 MiB and URL-encoded bodies to 64 KiB; oversized inputs return HTTP 413 before persistence or generation. The 100,000-character cap bounds standard-generation source text. Generated card count and field lengths are not yet independently capped.
 
 ## PDF generation
 
-The normal frontend uploads a PDF to `POST /api/notes/pdf-text`, then follows the same save-note and extract workflow as pasted text. The separate `POST /api/notes/pdf-study-pack` endpoint extracts the PDF and generates cards in one server request and database transaction. Both paths use `pdfjs-dist`; extraction is limited to 15 MiB and 250 pages. Image-only scans do not receive OCR.
+The normal frontend uploads a PDF to `POST /api/notes/pdf-text`, then follows the same save-note and extract workflow as pasted text. The separate `POST /api/notes/pdf-study-pack` endpoint extracts the PDF and generates cards in one server request and database transaction. Both paths use `pdfjs-dist`; extraction is limited to 15 MiB, 250 pages, and 100,000 extracted characters. Image-only scans do not receive OCR.
 
 Extracted PDF text is stored in `study_notes.raw_text` and passed to the AI integration on generation. Uploaded file bytes are held in memory and zeroed after processing; this does not erase the extracted text saved in the database.
 
@@ -31,7 +31,7 @@ Notes are untrusted input to the model. The system prompt requests grounded outp
 
 ## Additional-question generation
 
-`POST /api/notes/:noteId/cards/more` loads the owner's note and all generated cards for that note, then sends the complete source plus covered concept/question/excerpt records to the model. It requires a boolean `moreAvailable` in the JSON response, applies the same source-excerpt and duplicate filters, and returns whether more questions remain. Unlike the standard generation path, AI errors are logged and returned as HTTP 503; no demo fallback is used.
+`POST /api/notes/:noteId/cards/more` loads the owner's note and up to 101 generated cards. It returns HTTP 413 when more than 100 existing cards are present, or when the serialized source-plus-covered-concepts/questions exceeds 120,000 characters. The model receives the complete source and covered concept/question pairs. It requires a boolean `moreAvailable` in the JSON response, applies the same source-excerpt and duplicate filters, and returns whether more questions remain. Unlike the standard generation path, AI errors are logged and returned as HTTP 503; no demo fallback is used.
 
 ## Fallback and review
 
@@ -41,8 +41,7 @@ The review route supports `approve`, `edit_approve`, and `discard`. Approving or
 
 ## Security and reliability recommendations
 
-- Define maximum note and extracted-PDF character counts and reject over-limit input before persistence or AI submission.
-- Set provider request timeouts and explicit per-call token/output limits; cap number and length of cards and fields after parsing.
+- Set provider request timeouts and explicit per-call token/output limits; cap number and length of generated cards and fields after parsing.
 - Keep per-owner limits, but use a shared limiter and add a global budget/abuse ceiling for multi-instance deployments.
 - Preserve the existing mode indicator and human review. Track sanitized AI failure categories and latency without logging note contents, prompts containing user notes, or credentials.
 - Add tests for malformed JSON, empty/inexact excerpts, duplicate cards, excessive input/output, provider timeout, and demo fallback. Verify that a failed generation cannot leave partial or incorrectly owned records.

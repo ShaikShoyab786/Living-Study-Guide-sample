@@ -1,4 +1,5 @@
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { MAX_STUDY_TEXT_CHARACTERS } from "./study-limits";
 
 const maxPdfPages = 250;
 
@@ -38,6 +39,7 @@ export async function extractPdfText(
     }
 
     const pageTexts: string[] = [];
+    let totalCharacters = 0;
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
       const content = await page.getTextContent();
@@ -48,6 +50,13 @@ export async function extractPdfText(
         .join("")
         .replace(/[ \t]+\n/g, "\n")
         .trim();
+      totalCharacters += pageText.length + (pageTexts.length > 0 && pageText ? 2 : 0);
+      if (totalCharacters > MAX_STUDY_TEXT_CHARACTERS) {
+        throw new PdfExtractionError(
+          `Extracted PDF text exceeds ${MAX_STUDY_TEXT_CHARACTERS.toLocaleString()} characters.`,
+          413,
+        );
+      }
       pageTexts.push(pageText);
       page.cleanup();
     }

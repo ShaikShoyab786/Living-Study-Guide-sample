@@ -1,4 +1,7 @@
-import express, { type Express } from "express";
+import express, {
+  type ErrorRequestHandler,
+  type Express,
+} from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -11,8 +14,10 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import { createOriginProtection } from "./lib/origin-security";
 
 const app: Express = express();
+const originProtection = createOriginProtection();
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {
   throw new Error("SESSION_SECRET must be set to secure guest sessions.");
@@ -38,9 +43,22 @@ app.use(
   }),
 );
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-app.use(cors({ credentials: true, origin: true }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors(originProtection.corsOptions));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "64kb", parameterLimit: 50 }));
+const requestBodyLimitHandler: ErrorRequestHandler = (error, _req, res, next) => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    error.type === "entity.too.large"
+  ) {
+    res.status(413).json({ error: "Request body is too large." });
+    return;
+  }
+  next(error);
+};
+app.use(requestBodyLimitHandler);
 app.use(cookieParser(sessionSecret));
 app.use(
   clerkMiddleware((req) => ({
@@ -51,6 +69,7 @@ app.use(
   })),
 );
 
+app.use("/api", originProtection.requireSafeMutationOrigin);
 app.use("/api", router);
 
 export default app;

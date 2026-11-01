@@ -1,4 +1,8 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
+import {
+  MAX_AI_CONTEXT_CHARACTERS,
+  MAX_STUDY_TEXT_CHARACTERS,
+} from "./study-limits";
 
 export type ExtractedCard = {
   sourceExcerpt: string;
@@ -6,6 +10,26 @@ export type ExtractedCard = {
   question: string;
   answer: string;
 };
+
+export class StudyInputLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StudyInputLimitError";
+  }
+}
+
+export function buildAdditionalCardsContext(
+  rawText: string,
+  alreadyCovered: Pick<ExtractedCard, "concept" | "question">[],
+): string {
+  return JSON.stringify({
+    source: rawText,
+    alreadyCovered: alreadyCovered.map(({ concept, question }) => ({
+      concept,
+      question,
+    })),
+  });
+}
 
 const parseCards = (content: string, allowEmpty = false): ExtractedCard[] => {
   const decoded: unknown = JSON.parse(content);
@@ -114,6 +138,11 @@ export const makeDemoCards = (rawText: string): ExtractedCard[] => {
 export const extractCards = async (
   rawText: string,
 ): Promise<{ cards: ExtractedCard[]; mode: "ai" | "demo" }> => {
+  if (rawText.length > MAX_STUDY_TEXT_CHARACTERS) {
+    throw new StudyInputLimitError(
+      `Study notes must be ${MAX_STUDY_TEXT_CHARACTERS.toLocaleString()} characters or fewer.`,
+    );
+  }
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-5.6-luna",
@@ -143,7 +172,20 @@ export const extractCards = async (
 export const extractAdditionalCards = async (
   rawText: string,
   alreadyCovered: Pick<ExtractedCard, "sourceExcerpt" | "concept" | "question">[],
+  checkedUserContext?: string,
 ): Promise<{ cards: ExtractedCard[]; hasMore: boolean; mode: "ai" }> => {
+  if (rawText.length > MAX_STUDY_TEXT_CHARACTERS) {
+    throw new StudyInputLimitError(
+      `Study notes must be ${MAX_STUDY_TEXT_CHARACTERS.toLocaleString()} characters or fewer.`,
+    );
+  }
+  const userContext =
+    checkedUserContext ?? buildAdditionalCardsContext(rawText, alreadyCovered);
+  if (userContext.length > MAX_AI_CONTEXT_CHARACTERS) {
+    throw new StudyInputLimitError(
+      `The note and existing cards exceed the ${MAX_AI_CONTEXT_CHARACTERS.toLocaleString()}-character AI context limit.`,
+    );
+  }
   const completion = await openai.chat.completions.create({
     model: "gpt-5.6-luna",
     max_completion_tokens: 8192,
@@ -156,14 +198,7 @@ export const extractAdditionalCards = async (
       },
       {
         role: "user",
-        content: JSON.stringify({
-          source: rawText,
-          alreadyCovered: alreadyCovered.map(({ concept, question, sourceExcerpt }) => ({
-            concept,
-            question,
-            sourceExcerpt,
-          })),
-        }),
+        content: userContext,
       },
     ],
   });

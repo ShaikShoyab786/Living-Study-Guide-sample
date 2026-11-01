@@ -21,6 +21,8 @@ The frontend is a single-page React application. `lib/api-spec/openapi.yaml` is 
 
 The API is an Express 5 service. It mounts health, auth, and study routers under `/api`. `requireStudyOwner` is applied to the entire study router. The API uses Drizzle ORM with PostgreSQL (`node-postgres`); the schema is defined in `lib/db/src/schema`.
 
+Credentialed CORS is restricted to the effective same origin and optional exact origins in `STUDY_TRUSTED_ORIGINS`. State-changing `/api` requests must include the matching Origin or Referer and `X-Study-CSRF: 1`; the shared browser client adds the marker automatically.
+
 ## Authentication and request ownership
 
 Clerk handles Google sign-in and validates signed-in sessions through `clerkMiddleware`. In production, `/api/__clerk` can proxy Clerk Frontend API requests using the server-side Clerk secret. Google provider availability and OAuth settings are configured outside this repository and were not verified in this audit.
@@ -33,13 +35,15 @@ See [Authentication and Authorization](./AUTHENTICATION-AND-AUTHORIZATION.md) fo
 
 ## Note and PDF workflow
 
-For `.txt`, `.md`, and `.markdown`, the browser reads the selected text file and places its text in the note editor. For PDFs, the browser posts the file to `POST /api/notes/pdf-text`; the server accepts one file up to 15 MiB in memory, checks for a PDF signature, and extracts selectable text with `pdfjs-dist`. PDF extraction is capped at 250 pages. Scanned/image-only PDFs return an error because OCR is not implemented.
+For `.txt`, `.md`, and `.markdown`, the browser reads the selected text file and places its text in the note editor. For PDFs, the browser posts the file to `POST /api/notes/pdf-text`; the server accepts one file up to 15 MiB in memory, checks for a PDF signature, and extracts selectable text with `pdfjs-dist`. PDF extraction is capped at 250 pages and 100,000 characters; note input has the same character cap. JSON and URL-encoded request bodies are limited to 1 MiB and 64 KiB. Scanned/image-only PDFs return an error because OCR is not implemented.
 
 In the normal UI flow, the user reviews the extracted/pasted text, creates a note with `POST /api/notes`, and starts generation with `POST /api/notes/:noteId/extract`. The API also exposes `POST /api/notes/pdf-study-pack`, which extracts a PDF, generates cards, and stores the note and cards together in a transaction; the current frontend's normal flow does not call this combined endpoint.
 
 ## AI generation and review
 
 The API sends note text to the OpenAI-compatible Replit AI integration with model identifier `gpt-5.6-luna`. The model is asked for JSON cards containing a source excerpt, concept, question, and answer. The server parses the response, rejects cards whose excerpt is not an exact substring of the source, filters blank fields, and removes approximate duplicate questions.
+
+Additional-card generation bounds the serialized source and existing-card context to 120,000 characters and includes at most 100 existing cards.
 
 Each accepted generated card starts as `pending`. In Review Hub, a user can approve, edit and approve, or discard it. Approving stores a copy in the verified-library table and changes the generated card status to `approved`; discarding marks it `rejected`. The UI presents generation mode (`ai` or `demo`). Standard extraction falls back to sentence-based demo cards if the AI call or response validation fails. Additional-question generation returns a service error if its AI path fails.
 

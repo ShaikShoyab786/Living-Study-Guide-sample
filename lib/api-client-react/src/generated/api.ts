@@ -671,7 +671,7 @@ return customFetch<Note>(getCreateNoteUrl(),
 
 export const getCreateNoteMutationKey = () => ['createNote'] as const;
 
-export const getCreateNoteMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateNoteMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNote>>, TError,CreateNoteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createNote>>, TError,CreateNoteMutationVariables, TContext> => {
 
@@ -700,13 +700,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateNoteMutationResult = NonNullable<Awaited<ReturnType<typeof createNote>>>
     export type CreateNoteMutationBody = BodyType<NoteInput>
-    export type CreateNoteMutationError = ErrorType<unknown>
+    export type CreateNoteMutationError = ErrorType<void>
     export type CreateNoteMutationVariables = {data: BodyType<NoteInput>}
 
     /**
  * @summary Save lecture notes
  */
-export const useCreateNote = <TError = ErrorType<unknown>,
+export const useCreateNote = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createNote>>, TError,CreateNoteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof createNote>>,

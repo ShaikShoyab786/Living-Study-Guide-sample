@@ -9,6 +9,7 @@ export type BodyType<T> = T;
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 // ---------------------------------------------------------------------------
@@ -336,6 +337,10 @@ export async function customFetch<T = unknown>(
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+
+  if (!SAFE_METHODS.has(method) && !headers.has("x-study-csrf")) {
+    headers.set("x-study-csrf", "1");
+  }
 
   if (
     typeof init.body === "string" &&

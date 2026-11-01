@@ -30,8 +30,18 @@ import {
   libraryCardsTable,
   notesTable,
 } from "@workspace/db";
-import { extractAdditionalCards, extractCards } from "../lib/study-extraction";
+import {
+  buildAdditionalCardsContext,
+  extractAdditionalCards,
+  extractCards,
+} from "../lib/study-extraction";
 import { extractPdfText, PdfExtractionError } from "../lib/pdf-extraction";
+import {
+  MAX_AI_CONTEXT_CHARACTERS,
+  MAX_EXISTING_CARDS_FOR_AI,
+  MAX_STUDY_TEXT_CHARACTERS,
+  STUDY_TEXT_TOO_LARGE_MESSAGE,
+} from "../lib/study-limits";
 import {
   getStudyOwner,
   requireStudyOwner,
@@ -106,6 +116,13 @@ router.get("/notes", async (_req, res): Promise<void> => {
 
 router.post("/notes", async (req, res): Promise<void> => {
   const owner = getStudyOwner(res);
+  if (
+    typeof req.body?.rawText === "string" &&
+    req.body.rawText.length > MAX_STUDY_TEXT_CHARACTERS
+  ) {
+    res.status(413).json({ error: STUDY_TEXT_TOO_LARGE_MESSAGE });
+    return;
+  }
   const parsed = CreateNoteBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -299,6 +316,10 @@ router.post(
       res.status(404).json({ error: "Note not found" });
       return;
     }
+    if (note.rawText.length > MAX_STUDY_TEXT_CHARACTERS) {
+      res.status(413).json({ error: STUDY_TEXT_TOO_LARGE_MESSAGE });
+      return;
+    }
 
     const result = await extractCards(note.rawText);
     if (result.mode === "demo") {
@@ -349,6 +370,10 @@ router.post(
       res.status(404).json({ error: "Note not found" });
       return;
     }
+    if (note.rawText.length > MAX_STUDY_TEXT_CHARACTERS) {
+      res.status(413).json({ error: STUDY_TEXT_TOO_LARGE_MESSAGE });
+      return;
+    }
 
     const alreadyCovered = await db
       .select({
@@ -363,10 +388,29 @@ router.post(
           eq(generatedCardsTable.noteId, note.id),
           studyOwnerCondition(owner),
         ),
-      );
+      )
+      .limit(MAX_EXISTING_CARDS_FOR_AI + 1);
+
+    if (alreadyCovered.length > MAX_EXISTING_CARDS_FOR_AI) {
+      res.status(413).json({
+        error: `Additional generation is limited to ${MAX_EXISTING_CARDS_FOR_AI} existing cards per note.`,
+      });
+      return;
+    }
+    const aiContext = buildAdditionalCardsContext(note.rawText, alreadyCovered);
+    if (aiContext.length > MAX_AI_CONTEXT_CHARACTERS) {
+      res.status(413).json({
+        error: `The note and existing cards exceed the ${MAX_AI_CONTEXT_CHARACTERS.toLocaleString()}-character AI context limit.`,
+      });
+      return;
+    }
 
     try {
-      const result = await extractAdditionalCards(note.rawText, alreadyCovered);
+      const result = await extractAdditionalCards(
+        note.rawText,
+        alreadyCovered,
+        aiContext,
+      );
       const cards =
         result.cards.length > 0
           ? await db

@@ -7,6 +7,7 @@
  */
 
 export interface PdfTextExtraction {
+  /** @maxLength 100000 */
   text: string;
   pageCount: number;
 }
