@@ -4,10 +4,10 @@ Audit basis: current Replit workspace source on 2026-11-01. Source of truth was 
 
 ## Scope and limits
 
-- The three remediations below are present in the current working tree. No database migrations, data deletion, commit, or push were performed.
+- The three remediations below are present in the current working tree. No migration was run, and no pre-existing user data was changed. Temporary guest and note records created for smoke tests were removed afterward.
 - Reviewed API routing, auth and owner middleware, PDF handling, AI generation, database schema, frontend auth entry points, workspace environment-variable references, package lockfile, and `.gitignore`.
-- Ran the dependency audit, SAST, and HoundDog scans. The dependency audit reported 0 critical, 7 high, 8 moderate, and 2 low findings. SAST returned 0 findings; HoundDog returned 0 findings.
-- No live database contents, Replit secret values, Clerk provider settings, or production deployment settings were accessed. No exploit payloads were run.
+- The earlier full-workspace audit reported 0 critical, 7 high, 8 moderate, and 2 low dependency findings; SAST and HoundDog each reported 0 findings. After remediation, `pnpm audit --prod` no longer reports body-parser, but still reports two high Zod findings and one moderate `qs` finding. SAST and HoundDog were not rerun.
+- No production database, Replit secret values, Clerk provider settings, or production deployment settings were accessed. No exploit payloads were run.
 - Scanner output is a dependency/advisory signal, not proof that each affected code path is reachable in this deployment. Reachability notes below are based on this source review.
 
 ## Implemented controls verified in source
@@ -35,12 +35,12 @@ Audit basis: current Replit workspace source on 2026-11-01. Source of truth was 
 
 ### Dependency scanner advisories
 
-The dependency scan found these high-severity lockfile advisories. Except for the body-parser route described above, reachability was not confirmed here:
+The post-remediation production audit still reports these out-of-scope dependency advisories:
 
-- `undici` 7.29.1: four high-severity advisories concerning TLS option handling, redirect/cache behavior, TLS renegotiation, and excessive content encodings. Reported fix: 7.30.1. The affected caching/interceptor/TLS configurations were not found directly in application source; determine whether the installed SDK/runtime path exercises them before assigning application impact.
 - `zod` 3.25.76 and 4.6.5: the same reported high-severity uncontrolled validation-resource-consumption advisory appears against both lockfile versions. Reported fixed version: 4.6.6. The app uses Zod, but the scanner finding alone does not establish an attacker-controlled unbounded array reaching the affected validator. Trace each call path and update within compatible dependency constraints.
+- `qs` 6.16.0: one moderate advisory, reported fixed in 6.16.1.
 
-The scan also reported 8 moderate findings: `fast-uri` 3.1.8 (2), `postcss-selector-parser` 6.0.10 (1), `qs` 6.16.0 (1), and `undici` 7.29.1 (4). It reported 2 low `fast-uri` 3.1.8 findings. All were reported in `pnpm-lock.yaml`; fixes were available per scanner metadata. SAST and HoundDog did not report findings.
+The earlier full-workspace scan also reported `undici`, `fast-uri`, and `postcss-selector-parser` advisories. Those full-workspace findings were not re-audited after this focused dependency change.
 
 ### Other missing controls and risks
 
@@ -76,4 +76,11 @@ The scan also reported 8 moderate findings: `fast-uri` 3.1.8 (2), `postcss-selec
 5. Add broader authenticated route tests and migration coverage.
 6. Add measured indexes and general error/header hardening.
 
-No database changes or migrations were applied. The three remediations are code and dependency changes in the current working tree only.
+## Verification performed
+
+- `pnpm run typecheck` passed; all 7 origin/CSRF tests passed.
+- Same-origin preflight and health checks passed. Mutations without the marker and requests from an untrusted origin returned 403; oversized JSON returned 413.
+- Guest session and note creation/list/delete worked. A short note generated 4 AI cards using the existing model. Valid PDF text extracted; a PDF yielding over 100,000 characters returned 413. The temporary guest and note records were removed.
+- Signed-in Google login and positive guest-to-account transfer were not exercised because the preview browser has no authenticated Google session. A transfer request without a signed-in user returned 401.
+
+No migrations were run. Changes are confined to code, dependency resolution, tests, and documentation.
