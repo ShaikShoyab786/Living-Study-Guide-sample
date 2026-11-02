@@ -15,8 +15,12 @@ import {
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
 import { createOriginProtection } from "./lib/origin-security";
+import { REPLIT_TRUSTED_PROXY_HOPS } from "./lib/replit-proxy";
 
 const app: Express = express();
+// The Replit preview ingress reaches this server through its local proxy peer
+// and supplies three X-Forwarded-For entries. Trust only that observed chain.
+app.set("trust proxy", REPLIT_TRUSTED_PROXY_HOPS);
 const originProtection = createOriginProtection();
 const sessionSecret = process.env.SESSION_SECRET;
 if (!sessionSecret) {

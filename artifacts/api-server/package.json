@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:security": "node --experimental-strip-types --test src/lib/origin-security.test.mjs"
+    "test:security": "node --experimental-strip-types --test src/lib/origin-security.test.mjs src/lib/replit-proxy.test.mjs"
   },
   "dependencies": {
     "@clerk/express": "^2.1.85",
