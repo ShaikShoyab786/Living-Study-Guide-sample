@@ -114,8 +114,8 @@ The application reads configuration from each process environment; the API scrip
 Clone the repository, install dependencies, and check the workspace:
 
 ```sh
-git clone https://github.com/ShaikShoyab786/Living-Study-Guide-sample.git
-cd Living-Study-Guide-sample
+git clone https://github.com/ShaikShoyab786/Study-with-Miky.git
+cd Study-with-Miky
 pnpm install
 pnpm run typecheck
 pnpm run build
