@@ -43,6 +43,11 @@ yarn-error.log
 testem.log
 /typings
 
+# Local environment files (keep the safe template trackable)
+.env
+.env.*
+!.env.example
+
 # System Files
 .DS_Store
 Thumbs.db
